@@ -1,137 +1,455 @@
-import { App, Editor, MarkdownView, Modal, Notice, Plugin, PluginSettingTab, Setting } from 'obsidian';
+import { App, Editor, MarkdownView, Modal, Notice, Plugin, PluginSettingTab, Setting, TAbstractFile, ItemView, getIcon, Menu, TFile, WorkspaceLeaf, CachedMetadata } from 'obsidian';
 
 // Remember to rename these classes and interfaces!
 
-interface MyPluginSettings {
-	mySetting: string;
+type date = string
+
+interface FileData {
+	path: string;
+	basename: string;
+	byDateLinked: Map<date, number>
+	byDateEdited: Map<date, number>
+}
+// TODO tags?
+interface FileActivityData {
+	fileActivity: FileData[];
+	omittedPaths: string[];
+	maxLength: number;
+	openType: string
 }
 
-const DEFAULT_SETTINGS: MyPluginSettings = {
-	mySetting: 'default'
+const DEFAULT_DATA: FileActivityData = {
+	fileActivity: [],
+	omittedPaths: [],
+	maxLength: 50,
+	openType: 'tab'
+};
+
+/**Brainstorm
+ * 
+ * A name more like "ongoing"? Recent topics?
+ * 
+ * Data structure of:
+ * 1. recently created/edited/opened files
+ * * recently-linked-to files
+ * * recently linked tags
+ * 
+ * Also, parse dates:
+ * * last opened
+ * * last edited
+ * * last created
+ * * Daily note date, if available
+ * 
+ * Then:
+ * * display as a list, with an emoji indicated which it was?
+ * * display the date of the last link/access?
+ * * rank by a trailing "weight"?
+ * * give user a way to "finish" links/tags/projects, removing from list,
+ *   or move to a "finished projects"
+ * * A "span" view indicating the dates over which different tags/topics have been worked on?
+ *   That can scroll back in time?
+ *   Or a way to put these directly on the calendar view...? Open a pane beneath it-->selecting a tag or link highlights
+ *     dates where it was linked to?
+ *   Plugin might end up having to store a lot of data unless Obsidian has an API for its link database
+ */
+const FileActivityListViewType = 'file-activity';
+
+class FileActivityListView extends ItemView {
+  private readonly plugin: FileActivityPlugin;
+
+  constructor(
+    leaf: WorkspaceLeaf,
+    plugin: FileActivityPlugin,
+  ) {
+    super(leaf);
+
+    this.plugin = plugin;
+  }
+
+  public async onOpen(): Promise<void> {
+    this.redraw();
+  }
+
+  public getViewType(): string {
+    return FileActivityListViewType;
+  }
+
+  public getDisplayText(): string {
+    return 'File Activity';
+  }
+
+  public getIcon(): string {
+    return 'clock';
+  }
+
+  public readonly redraw = (): void => {
+    const openFile = this.app.workspace.getActiveFile();
+
+    const rootEl = createDiv({ cls: 'nav-folder mod-root' });
+    const childrenEl = rootEl.createDiv({ cls: 'nav-folder-children' });
+
+    this.plugin.data.fileActivity.forEach((f) => {
+      const navFile = childrenEl.createDiv({ cls: 'nav-file file-activity-file' });
+      const navFileTitle = navFile.createDiv({ cls: 'nav-file-title file-activity-title' })
+      const navFileTitleContent = navFileTitle.createDiv({ cls: 'nav-file-title-content file-activity-title-content' })
+
+      navFileTitleContent.setText(f.basename)
+
+      if (openFile && f.path === openFile.path) {
+        navFileTitle.addClass('is-active');
+      }
+
+      navFileTitle.setAttr('draggable', 'true');
+      navFileTitle.addEventListener('dragstart', (event: DragEvent) => {
+        const file = this.app.metadataCache.getFirstLinkpathDest(
+          f.path,
+          '',
+        );
+
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const dragManager = (this.app as any).dragManager;
+        const dragData = dragManager.dragFile(event, file);
+        dragManager.onDragStart(event, dragData);
+      });
+
+      navFileTitle.addEventListener('mouseover', (event: MouseEvent) => {
+        this.app.workspace.trigger('hover-link', {
+          event,
+          source: FileActivityListViewType,
+          hoverParent: rootEl,
+          targetEl: navFile,
+          linktext: f.path,
+        });
+      });
+
+      navFileTitle.addEventListener('contextmenu', (event: MouseEvent) => {
+        const menu = new Menu();
+        const file = this.app.vault.getAbstractFileByPath(f.path);
+        this.app.workspace.trigger(
+          'file-menu',
+          menu,
+          file,
+          'link-context-menu',
+        );
+        menu.showAtPosition({ x: event.clientX, y: event.clientY });
+      });
+
+      navFileTitleContent.addEventListener('click', (event: MouseEvent) => {
+        this.focusFile(f, event.ctrlKey || event.metaKey);
+      });
+
+      const navFileDelete = navFileTitle.createDiv({ cls: 'recent-files-file-delete' })
+      navFileDelete.appendChild(getIcon("x-circle") as SVGSVGElement);
+      navFileDelete.addEventListener('click', async () => {
+        await this.plugin.removeFile(f);
+        this.redraw();
+      })
+    });
+
+    const contentEl = this.containerEl.children[1];
+    contentEl.empty();
+    contentEl.appendChild(rootEl);
+  };
+
+  /**
+   * Open the provided file in the most recent leaf.
+   *
+   * @param shouldSplit Whether the file should be opened in a new split, or in
+   * the most recent split. If the most recent split is pinned, this is set to
+   * true.
+   */
+  private readonly focusFile = async (file: FileData, shouldSplit = false): Promise<void> => {
+    const targetFile = this.app.vault
+      .getFiles()
+      .find((f) => f.path === file.path);
+
+    if (targetFile) {
+      let leaf: WorkspaceLeaf | null = this.app.workspace.getMostRecentLeaf();
+
+      if (shouldSplit || leaf === null || leaf.getViewState().pinned) {
+        if (this.plugin.data.openType == 'split')
+          leaf = this.app.workspace.getLeaf('split');
+        else if (this.plugin.data.openType == 'window')
+          leaf = this.app.workspace.getLeaf('window');
+        else
+          leaf = this.app.workspace.getLeaf('tab');
+      }
+      leaf.openFile(targetFile);
+	  
+    } else {
+      new Notice('Cannot find a file with that name');
+      await this.plugin.removeFile(file);
+      this.redraw();
+    }
+  };
 }
 
-export default class MyPlugin extends Plugin {
-	settings: MyPluginSettings;
+export default class FileActivityPlugin extends Plugin {
+  public data: FileActivityData;
+  public view: FileActivityListView;
 
-	async onload() {
-		await this.loadSettings();
+  public async onload(): Promise<void> {
+    console.log('File Activity: Loading plugin v' + this.manifest.version);
 
-		// This creates an icon in the left ribbon.
-		const ribbonIconEl = this.addRibbonIcon('dice', 'Sample Plugin', (evt: MouseEvent) => {
-			// Called when the user clicks the icon.
-			new Notice('This is a notice!');
-		});
-		// Perform additional things with the ribbon
-		ribbonIconEl.addClass('my-plugin-ribbon-class');
+    await this.loadData();
 
-		// This adds a status bar item to the bottom of the app. Does not work on mobile apps.
-		const statusBarItemEl = this.addStatusBarItem();
-		statusBarItemEl.setText('Status Bar Text');
+    this.registerView(
+      FileActivityListViewType,
+      (leaf) => (this.view = new FileActivityListView(leaf, this)),
+    );
 
-		// This adds a simple command that can be triggered anywhere
-		this.addCommand({
-			id: 'open-sample-modal-simple',
-			name: 'Open sample modal (simple)',
-			callback: () => {
-				new SampleModal(this.app).open();
-			}
-		});
-		// This adds an editor command that can perform some operation on the current editor instance
-		this.addCommand({
-			id: 'sample-editor-command',
-			name: 'Sample editor command',
-			editorCallback: (editor: Editor, view: MarkdownView) => {
-				console.log(editor.getSelection());
-				editor.replaceSelection('Sample Editor Command');
-			}
-		});
-		// This adds a complex command that can check whether the current state of the app allows execution of the command
-		this.addCommand({
-			id: 'open-sample-modal-complex',
-			name: 'Open sample modal (complex)',
-			checkCallback: (checking: boolean) => {
-				// Conditions to check
-				const markdownView = this.app.workspace.getActiveViewOfType(MarkdownView);
-				if (markdownView) {
-					// If checking is true, we're simply "checking" if the command can be run.
-					// If checking is false, then we want to actually perform the operation.
-					if (!checking) {
-						new SampleModal(this.app).open();
-					}
+    this.addCommand({
+      id: 'file-activity-open',
+      name: 'Open File Activity Panel',
+      callback: async () => {
+        let [leaf] = this.app.workspace.getLeavesOfType(FileActivityListViewType);
+        if (!leaf) {
+          leaf = this.app.workspace.getRightLeaf(false);
+          await leaf.setViewState({ type: FileActivityListViewType });
+        }
 
-					// This command will only show up in Command Palette when the check function returns true
-					return true;
-				}
-			}
-		});
+        this.app.workspace.revealLeaf(leaf);
+      }
+    });
 
-		// This adds a settings tab so the user can configure various aspects of the plugin
-		this.addSettingTab(new SampleSettingTab(this.app, this));
+    // this.app.workspace.registerHoverLinkSource(
+    //   FileActivityListViewType,
+    //   {
+    //     display: 'File Activity',
+    //     defaultMod: true,
+    //   },
+    // );
 
-		// If the plugin hooks up any global DOM events (on parts of the app that doesn't belong to this plugin)
-		// Using this function will automatically remove the event listener when this plugin is disabled.
-		this.registerDomEvent(document, 'click', (evt: MouseEvent) => {
-			console.log('click', evt);
-		});
+    // if (this.app.workspace.layoutReady) {
+    //   this.initView();
+    // } else {
+    //   this.registerEvent(this.app.workspace.on('layout-ready', this.initView));
+    // }
 
-		// When registering intervals, this function will automatically clear the interval when the plugin is disabled.
-		this.registerInterval(window.setInterval(() => console.log('setInterval'), 5 * 60 * 1000));
-	}
+    this.initView();
+    this.registerEvent(this.app.vault.on('rename', this.handleRename));
+    this.registerEvent(this.app.vault.on('delete', this.handleDelete));
+    this.registerEvent(this.app.workspace.on('file-open', this.update));
+    this.registerEvent(this.app.vault.on('modify', this.handleModify));
+    this.registerEvent(this.app.metadataCache.on('changed', this.handleUpdateCache));
+    this.addSettingTab(new FileActivitySettingTab(this.app, this));
+  }
 
-	onunload() {
+  public onunload(): void {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (this.app.workspace as any).unregisterHoverLinkSource(
+      FileActivityListViewType,
+    );
+  }
 
-	}
+  public async loadData(): Promise<void> {
+    this.data = Object.assign(DEFAULT_DATA, await super.loadData());
+  }
 
-	async loadSettings() {
-		this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
-	}
+  public async saveData(): Promise<void> {
+    await super.saveData(this.data);
+  }
 
-	async saveSettings() {
-		await this.saveData(this.settings);
-	}
+  public readonly pruneOmittedFiles = async (): Promise<void> => {
+    this.data.fileActivity = this.data.fileActivity.filter(this.shouldAddFile);
+    await this.saveData();
+  };
+
+  public readonly pruneLength = async (): Promise<void> => {
+    const toRemove =
+      this.data.fileActivity.length - (this.data.maxLength || DEFAULT_DATA.maxLength);
+    if (toRemove > 0) {
+      this.data.fileActivity.splice(
+        this.data.fileActivity.length - toRemove,
+        toRemove,
+      );
+    }
+    await this.saveData();
+  };
+
+  public readonly shouldAddFile = (file: TFile | FileData): boolean => {
+    const patterns: string[] = this.data.omittedPaths.filter(
+      (path) => path.length > 0,
+    );
+    const fileMatchesRegex = (pattern: string): boolean => {
+      try {
+        return new RegExp(pattern).test(file.path);
+      } catch (err) {
+        console.error('File Activity: Invalid regex pattern: ' + pattern);
+        return false;
+      }
+    };
+    return !patterns.some(fileMatchesRegex);
+  };
+
+  private readonly initView = async (): Promise<void> => {
+    let leaf: WorkspaceLeaf | null = null;
+    for (leaf of this.app.workspace.getLeavesOfType(FileActivityListViewType)) {
+      if (leaf.view instanceof FileActivityListView) return;
+      // The view instance was created by an older version of the plugin,
+      // so clear it and recreate it (so it'll be the new version).
+      // This avoids the need to reload Obsidian to update the plugin.
+      await leaf.setViewState({ type: 'empty' });
+      break;
+    }
+    (leaf ?? this.app.workspace.getLeftLeaf(false)).setViewState({
+      type: FileActivityListViewType,
+      active: true,
+    });
+  };
+
+  private readonly handleRename = async (
+    file: TAbstractFile,
+    oldPath: string,
+  ): Promise<void> => {
+    const entry = this.data.fileActivity.find(
+      (f) => f.path === oldPath,
+    );
+    if (entry) {
+      entry.path = file.path;
+      entry.basename = file.name.replace(/\.[^/.]+$/, '');;
+      this.view.redraw();
+      await this.saveData();
+    }
+  };
+
+  private readonly handleDelete = async (
+    file: TAbstractFile,
+  ): Promise<void> => {
+    const beforeLen = this.data.fileActivity.length;
+    this.data.fileActivity = this.data.fileActivity.filter(
+      (f) => f.path !== file.path,
+    );
+
+    if (beforeLen !== this.data.fileActivity.length) {
+      this.view.redraw();
+      await this.saveData();
+    }
+  };
+  
+  // Or: use metadata cache, which tracks links?
+  // Fires after a little typing
+  private readonly handleModify = async (
+    file: TAbstractFile,
+  ): Promise<void> => {
+    console.log('modified: ' + file.name)
+  };
+
+  private readonly handleUpdateCache = async (
+    file: TFile, data: string, cache: CachedMetadata
+  ): Promise<void> => {
+    console.log('updated: ' + file.name + ' + cache: ' + JSON.stringify(cache))
+    console.log('cache: ' + JSON.stringify(app.metadataCache.resolvedLinks[file.path]))
+  };
+
+  readonly removeFile = async (file: FileData): Promise<void> => {
+    this.data.fileActivity = this.data.fileActivity.filter(
+      (currFile) => currFile.path !== file.path,
+    );
+    await this.pruneLength(); // Handles the save
+  }
+
+  private readonly update = async (file: TFile): Promise<void> => {
+    if (!file || !this.shouldAddFile(file)) {
+      return;
+    }
+	this.data.fileActivity = this.data.fileActivity.filter(
+		(f) => f.path !== file.path,
+	  );
+	  this.data.fileActivity.unshift({
+      basename: file.basename,
+      path: file.path,
+      byDateEdited: new Map(),
+      byDateLinked: new Map()
+	  });
+  
+	await this.pruneLength(); // Handles the save
+    this.view.redraw();
+  };
 }
 
-class SampleModal extends Modal {
-	constructor(app: App) {
-		super(app);
-	}
+class FileActivitySettingTab extends PluginSettingTab {
+  private readonly plugin: FileActivityPlugin;
 
-	onOpen() {
-		const {contentEl} = this;
-		contentEl.setText('Woah!');
-	}
+  constructor(app: App, plugin: FileActivityPlugin) {
+    super(app, plugin);
+    this.plugin = plugin;
+  }
 
-	onClose() {
-		const {contentEl} = this;
-		contentEl.empty();
-	}
-}
+  public display(): void {
+    const { containerEl } = this;
+    containerEl.empty();
+    containerEl.createEl('h2', { text: 'File Activity' });
 
-class SampleSettingTab extends PluginSettingTab {
-	plugin: MyPlugin;
+    const fragment = document.createDocumentFragment();
+    const link = document.createElement('a');
+    link.href =
+      'https://developer.mozilla.org/en-US/docs/Web/JavaScript/Guide/Regular_Expressions#writing_a_regular_expression_pattern';
+    link.text = 'MDN - Regular expressions';
+    fragment.append('RegExp patterns to ignore. One pattern per line. See ');
+    fragment.append(link);
+    fragment.append(' for help.');
 
-	constructor(app: App, plugin: MyPlugin) {
-		super(app, plugin);
-		this.plugin = plugin;
-	}
+	// todo allow only .md extensions?
 
-	display(): void {
-		const {containerEl} = this;
+    new Setting(containerEl)
+      .setName('Omitted pathname patterns')
+      .setDesc(fragment)
+      .addTextArea((textArea) => {
+        textArea.inputEl.setAttr('rows', 6);
+        textArea
+          .setPlaceholder('^daily/\n^journal/\n\\.png$\nfoobar.*baz')
+          .setValue(this.plugin.data.omittedPaths.join('\n'));
+        textArea.inputEl.onblur = (e: FocusEvent) => {
+          const patterns = (e.target as HTMLInputElement).value;
+          this.plugin.data.omittedPaths = patterns.split('\n');
+          this.plugin.pruneOmittedFiles();
+          this.plugin.view.redraw();
+        };
+      });
 
-		containerEl.empty();
+    new Setting(containerEl)
+      .setName('Number of Files')
+      .setDesc('Maximum number of files to track.')
+      .addText((text) => {
+        text.inputEl.setAttr('type', 'number');
+        text.inputEl.setAttr('placeholder', DEFAULT_DATA.maxLength);
+        text
+          .setValue(this.plugin.data.maxLength?.toString())
+          .onChange((value) => {
+            const parsed = parseInt(value, 10);
+            if (!Number.isNaN(parsed) && parsed <= 0) {
+              new Notice('Number of files must be a positive integer');
+              return;
+            }
+          });
+        text.inputEl.onblur = (e: FocusEvent) => {
+          const maxfiles = (e.target as HTMLInputElement).value;
+          const parsed = parseInt(maxfiles, 10);
+          this.plugin.data.maxLength = parsed;
+          this.plugin.pruneLength();
+          this.plugin.view.redraw();
+        };
+      });
 
-		containerEl.createEl('h2', {text: 'Settings for my awesome plugin.'});
+    new Setting(containerEl)
+      .setName("Open note in")
+      .setDesc("Open the clicked recent file record in a new tab, split, or window (only works on the desktop app).")
+      .addDropdown((dropdown) => {
+        const options: Record<string, string> = {
+          "tab": "tab",
+          "split": "split",
+          "window": "window",
+        };
 
-		new Setting(containerEl)
-			.setName('Setting #1')
-			.setDesc('It\'s a secret')
-			.addText(text => text
-				.setPlaceholder('Enter your secret')
-				.setValue(this.plugin.settings.mySetting)
-				.onChange(async (value) => {
-					console.log('Secret: ' + value);
-					this.plugin.settings.mySetting = value;
-					await this.plugin.saveSettings();
-				}));
-	}
+        dropdown
+          .addOptions(options)
+          .setValue(this.plugin.data.openType)
+          .onChange(async (value) => {
+            this.plugin.data.openType = value;
+            await this.plugin.saveData();
+            this.display();
+          });
+      });
+  }
 }
