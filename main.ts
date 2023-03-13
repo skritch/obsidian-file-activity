@@ -1,57 +1,45 @@
 import { App, Editor, MarkdownView, Modal, Notice, Plugin, PluginSettingTab, Setting, TAbstractFile, ItemView, getIcon, Menu, TFile, WorkspaceLeaf, CachedMetadata } from 'obsidian';
+import { moment } from "obsidian";
 
 // Remember to rename these classes and interfaces!
 
-type date = string
+type PathStr = string;
+type DateStr = string;
 
 interface FileData {
-	path: string;
+	path: PathStr;
 	basename: string;
-	byDateLinked: Map<date, number>
-	byDateEdited: Map<date, number>
+	byDateLinked: Record<DateStr, number>;
+	byDateEdited: Record<DateStr, number>;
 }
+
+interface LinkCacheEntry {
+  ts: moment.Moment;
+  // TODO: do we even need numbers?
+  resolvedLinks: Record<PathStr, number>
+  unresolvedLinks: Record<string, number>
+}
+
+
 // TODO tags?
 interface FileActivityData {
 	fileActivity: FileData[];
 	omittedPaths: string[];
 	maxLength: number;
-	openType: string
+	openType: string;
+  cachedLinks: Record<PathStr, LinkCacheEntry>;
+  cacheTTLseconds: number
 }
 
 const DEFAULT_DATA: FileActivityData = {
 	fileActivity: [],
 	omittedPaths: [],
 	maxLength: 50,
-	openType: 'tab'
+	openType: 'tab',
+  cachedLinks: {},
+  cacheTTLseconds: 60 * 30
 };
 
-/**Brainstorm
- * 
- * A name more like "ongoing"? Recent topics?
- * 
- * Data structure of:
- * 1. recently created/edited/opened files
- * * recently-linked-to files
- * * recently linked tags
- * 
- * Also, parse dates:
- * * last opened
- * * last edited
- * * last created
- * * Daily note date, if available
- * 
- * Then:
- * * display as a list, with an emoji indicated which it was?
- * * display the date of the last link/access?
- * * rank by a trailing "weight"?
- * * give user a way to "finish" links/tags/projects, removing from list,
- *   or move to a "finished projects"
- * * A "span" view indicating the dates over which different tags/topics have been worked on?
- *   That can scroll back in time?
- *   Or a way to put these directly on the calendar view...? Open a pane beneath it-->selecting a tag or link highlights
- *     dates where it was linked to?
- *   Plugin might end up having to store a lot of data unless Obsidian has an API for its link database
- */
 const FileActivityListViewType = 'file-activity';
 
 class FileActivityListView extends ItemView {
@@ -335,12 +323,39 @@ export default class FileActivityPlugin extends Plugin {
     console.log('modified: ' + file.name)
   };
 
+  // if not in cache, add to cache
+  // if in cache, calculate diff and apply
+  // clean cache
   private readonly handleUpdateCache = async (
     file: TFile, data: string, cache: CachedMetadata
   ): Promise<void> => {
-    console.log('updated: ' + file.name + ' + cache: ' + JSON.stringify(cache))
-    console.log('cache: ' + JSON.stringify(app.metadataCache.resolvedLinks[file.path]))
+    let now = moment()
+    let cacheEntry = this.data.cachedLinks[file.path];
+    let newCacheEntry: LinkCacheEntry = {
+      ts: now, 
+      resolvedLinks: app.metadataCache.resolvedLinks[file.path],
+      unresolvedLinks: app.metadataCache.unresolvedLinks[file.path]
+    }
+    // create diff
+    this.cleanCache(now)
+    this.data.cachedLinks[file.path as PathStr] = newCacheEntry
+
+    let diff = this.diffCache(cacheEntry, newCacheEntry)
+
+    console.log('cacheEntry: ' + JSON.stringify(cacheEntry))
+    console.log('newCacheEntry: ' + JSON.stringify(app.metadataCache.resolvedLinks[file.path]))
   };
+
+  private readonly diffCache = (oldEntry: LinkCacheEntry, newEntry: LinkCacheEntry) => {
+    
+  }
+
+  private readonly cleanCache = (now: moment.Moment) => {
+    // remove anything older than ttl
+    this.data.cachedLinks = Object.fromEntries( Object.entries(this.data.cachedLinks).filter(
+      ([key, value]) => now.diff(value.ts) / 1000 > this.data.cacheTTLseconds
+    ) )
+  }
 
   readonly removeFile = async (file: FileData): Promise<void> => {
     this.data.fileActivity = this.data.fileActivity.filter(
@@ -359,8 +374,8 @@ export default class FileActivityPlugin extends Plugin {
 	  this.data.fileActivity.unshift({
       basename: file.basename,
       path: file.path,
-      byDateEdited: new Map(),
-      byDateLinked: new Map()
+      byDateEdited: {},
+      byDateLinked: {}
 	  });
   
 	await this.pruneLength(); // Handles the save
