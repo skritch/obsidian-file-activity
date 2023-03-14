@@ -346,8 +346,37 @@ export default class FileActivityPlugin extends Plugin {
     console.log('newCacheEntry: ' + JSON.stringify(app.metadataCache.resolvedLinks[file.path]))
   };
 
-  private readonly diffCache = (oldEntry: LinkCacheEntry, newEntry: LinkCacheEntry) => {
-    
+  private readonly diffCache = (oldCache: LinkCacheEntry, newCache: LinkCacheEntry): LinkCacheEntry => {
+    return {
+      ts: newCache.ts,
+      resolvedLinks: this.diffCacheEntries(oldCache.resolvedLinks, newCache.resolvedLinks),
+      unresolvedLinks: this.diffCacheEntries(oldCache.unresolvedLinks, newCache.unresolvedLinks),
+    }
+  }
+
+  // For each key, calculate the delta in its value
+  // Implemented as a reduce over the old entries, subtracting each number from new entries
+  private readonly diffCacheEntries = (
+    oldEntries: Record<string, number>, 
+    newEntries: Record<string, number>
+  ): Record<string, number> => {
+    return Object.entries(oldEntries).reduce<Record<string, number>>(
+      (acc: Record<string, number>, [k, v], i): Record<string, number> => {
+        if (acc[k] !== undefined) { 
+          let diff = acc[k] - v;
+          if (diff == 0) { 
+            delete acc[k];
+          } else {
+            acc[k] = diff;
+          }
+        } else {
+          acc[k] = -1 * v
+        }
+        return acc;
+      },
+      // Clone
+      {... newEntries}
+    )
   }
 
   private readonly cleanCache = (now: moment.Moment) => {
