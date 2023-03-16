@@ -18,6 +18,9 @@
       "ES7"
     ]
   },
+  "files": [
+    "src/main.ts"
+  ],
   "include": [
     "**/*.ts"
   ]
