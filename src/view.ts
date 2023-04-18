@@ -1,6 +1,7 @@
 
 import { getIcon, ItemView, Menu, Notice, WorkspaceLeaf } from 'obsidian';
-import FileActivityPlugin, { FileActivity, LIST_VIEW_TYPE } from './main';
+import FileActivityPlugin, { LIST_VIEW_TYPE } from './main';
+import { Backlinks, getTopLinks } from "./data";
 
 
 export default class FileActivityListView extends ItemView {
@@ -28,7 +29,7 @@ export default class FileActivityListView extends ItemView {
   }
 
   public getIcon(): string {
-    return 'clock';
+    return 'activity';
   }
   
   public readonly redraw = (): void => {
@@ -37,21 +38,22 @@ export default class FileActivityListView extends ItemView {
     const rootEl = createDiv({ cls: 'nav-folder mod-root' });
     const childrenEl = rootEl.createDiv({ cls: 'nav-folder-children' });
 
-    this.plugin.data.fileActivity.forEach((f) => {
+    let topLinks: [string, number][] = getTopLinks(this.plugin.data)
+    Object.values(topLinks).forEach(([path, ct]) => {
       const navFile = childrenEl.createDiv({ cls: 'nav-file file-activity-file' });
       const navFileTitle = navFile.createDiv({ cls: 'nav-file-title file-activity-title' })
       const navFileTitleContent = navFileTitle.createDiv({ cls: 'nav-file-title-content file-activity-title-content' })
 
-      navFileTitleContent.setText(f.basename)
+      navFileTitleContent.setText('(' + ct + ') ' + path)
 
-      if (openFile && f.path === openFile.path) {
-        navFileTitle.addClass('is-active');
-      }
+      // if (openFile && activity. path === openFile.path) {
+      //   navFileTitle.addClass('is-active');
+      // }
 
       navFileTitle.setAttr('draggable', 'true');
       navFileTitle.addEventListener('dragstart', (event: DragEvent) => {
         const file = this.app.metadataCache.getFirstLinkpathDest(
-          f.path,
+          path,
           '',
         );
 
@@ -67,13 +69,13 @@ export default class FileActivityListView extends ItemView {
           source: LIST_VIEW_TYPE,
           hoverParent: rootEl,
           targetEl: navFile,
-          linktext: f.path,
+          linktext: path,
         });
       });
 
       navFileTitle.addEventListener('contextmenu', (event: MouseEvent) => {
         const menu = new Menu();
-        const file = this.app.vault.getAbstractFileByPath(f.path);
+        const file = this.app.vault.getAbstractFileByPath(path);
         this.app.workspace.trigger(
           'file-menu',
           menu,
@@ -83,16 +85,17 @@ export default class FileActivityListView extends ItemView {
         menu.showAtPosition({ x: event.clientX, y: event.clientY });
       });
 
-      navFileTitleContent.addEventListener('click', (event: MouseEvent) => {
-        this.focusFile(f, event.ctrlKey || event.metaKey);
-      });
+      // navFileTitleContent.addEventListener('click', (event: MouseEvent) => {
+      //   this.focusFile(activity, event.ctrlKey || event.metaKey);
+      // });
 
       const navFileDelete = navFileTitle.createDiv({ cls: 'recent-files-file-delete' })
       navFileDelete.appendChild(getIcon("x-circle") as SVGSVGElement);
-      navFileDelete.addEventListener('click', async () => {
-        await this.plugin.removeFile(f);
-        this.redraw();
-      })
+
+      // navFileDelete.addEventListener('click', async () => {
+      //   await this.plugin.removeFile(f);
+      //   this.redraw();
+      // })
     });
 
     const contentEl = this.containerEl.children[1];
@@ -107,7 +110,7 @@ export default class FileActivityListView extends ItemView {
    * the most recent split. If the most recent split is pinned, this is set to
    * true.
    */
-  private readonly focusFile = async (file: FileActivity, shouldSplit = false): Promise<void> => {
+  private readonly focusFile = async (file: Backlinks, shouldSplit = false): Promise<void> => {
     const targetFile = this.app.vault
       .getFiles()
       .find((f) => f.path === file.path);
@@ -127,7 +130,7 @@ export default class FileActivityListView extends ItemView {
 	  
     } else {
       new Notice('Cannot find a file with that name');
-      await this.plugin.removeFile(file);
+      // await this.plugin.removeFile(file);
       this.redraw();
     }
   };

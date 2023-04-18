@@ -1,6 +1,7 @@
 
 import { App, Notice, PluginSettingTab, Setting } from 'obsidian';
-import FileActivityPlugin, { DEFAULT_DATA } from './main';
+import FileActivityPlugin from './main';
+import { DEFAULT_DATA } from "./data";
 
 
 export default class FileActivitySettingTab extends PluginSettingTab {
@@ -38,7 +39,7 @@ export default class FileActivitySettingTab extends PluginSettingTab {
       textArea.inputEl.onblur = (e: FocusEvent) => {
         const patterns = (e.target as HTMLInputElement).value;
         this.plugin.data.omittedPaths = patterns.split('\n');
-        this.plugin.pruneOmittedFiles();
+        // this.plugin.pruneOmittedFiles();
         this.plugin.saveData()
         this.plugin.view.redraw();
       };
@@ -63,7 +64,7 @@ export default class FileActivitySettingTab extends PluginSettingTab {
         const maxfiles = (e.target as HTMLInputElement).value;
         const parsed = parseInt(maxfiles, 10);
         this.plugin.data.maxLength = parsed;
-        this.plugin.pruneLength();
+        // this.plugin.pruneLength();
         this.plugin.saveData();
         this.plugin.view.redraw();
       };

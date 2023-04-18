@@ -19,7 +19,7 @@
     ]
   },
   "files": [
-    "src/main.ts"
+    "src/main.ts", "src/data.ts"
   ],
   "include": [
     "**/*.ts"

@@ -1,59 +1,14 @@
 
-import { App, Editor, MarkdownView, Modal, Notice, Plugin, PluginSettingTab, Setting, TAbstractFile, ItemView, getIcon, Menu, TFile, WorkspaceLeaf, CachedMetadata } from 'obsidian';
-import { moment } from "obsidian";
+import { CachedMetadata, LinkCache, moment, Plugin, TAbstractFile, TFile, WorkspaceLeaf } from 'obsidian';
+import { FileActivityPluginData, DEFAULT_DATA, updateOutgoingLinks, renamePath, deletePath } from './data';
 import FileActivitySettingTab from './settings';
 import FileActivityListView from './view';
 
-// Remember to rename these classes and interfaces!
-
-type PathStr = string;
-type DateStr = string;
-
-export interface FileActivity {
-  path: PathStr;
-  basename: string;
-  byDate: Record<DateStr, number>;
-}
-
-interface LinkCacheEntry {
-  date: DateStr;
-  // TODO: do we even need numbers?
-  resolvedLinks: Record<PathStr, number>
-  unresolvedLinks: Record<string, number>
-}
-
-interface LinkCacheDiff {
-  resolvedLinks: Record<PathStr, number> | null
-  unresolvedLinks: Record<string, number> | null
-}
-
-// TODO tags?
-interface FileActivityPluginData {
-  fileActivity: Record<PathStr, FileActivity>;
-  activityTTLdays: number;
-  omittedPaths: string[];
-  maxLength: number;
-  openType: string;
-  cachedLinks: Record<PathStr, LinkCacheEntry>;
-}
-
-const DATE_FORMAT = "YYYY-MM-DD"
-export const DEFAULT_DATA: FileActivityPluginData = {
-  fileActivity: {},
-  activityTTLdays: 21,
-  omittedPaths: [],
-  maxLength: 50,
-  openType: 'tab',
-  cachedLinks: {}
-};
-
 export const LIST_VIEW_TYPE = 'file-activity';
-
 
 export default class FileActivityPlugin extends Plugin {
   public data: FileActivityPluginData;
   public view: FileActivityListView;
-  public regexps: Array<RegExp>
   
   public async onload(): Promise<void> {
     console.log('File Activity: Loading plugin v' + this.manifest.version);
@@ -71,8 +26,7 @@ export default class FileActivityPlugin extends Plugin {
         name: 'Open File Activity Panel',
         callback: this.revealView
       });
-      this.registerEvent(this.app.workspace.on('file-open', this.handleOpen));
-      this.registerEvent(this.app.vault.on('modify', this.handleModify));
+      this.registerEvent(this.app.vault.on('create', this.handleCreate));
       this.registerEvent(this.app.vault.on('rename', this.handleRename));
       this.registerEvent(this.app.vault.on('delete', this.handleDelete));
       this.registerEvent(this.app.metadataCache.on('changed', this.handleUpdateCache));
@@ -88,9 +42,6 @@ export default class FileActivityPlugin extends Plugin {
   
   public async loadData(): Promise<void> {
     this.data = Object.assign(DEFAULT_DATA, await super.loadData());
-    this.regexps = this.data.omittedPaths
-    .filter((path) => path.length > 0)
-    .map((pattern) => new RegExp(pattern))
   }
   
   public async saveData(): Promise<void> {
@@ -122,93 +73,21 @@ export default class FileActivityPlugin extends Plugin {
     
     this.app.workspace.revealLeaf(leaf);
   }
-
-  /** STATE MODIFIERS */
   
-  private readonly applyDiff = async (diff: LinkCacheDiff) => {
-    // For now only resolved links
-    if (diff.resolvedLinks === null) { return; }
-
-    let today = moment().format(DATE_FORMAT)
-
-    // Add our delta to activity for each file this one links to.
-    Object.entries(diff.resolvedLinks).forEach(
-      ([path, delta]) => {
-        let activity = this.data.fileActivity[path]
-        let newByDate = activity.byDate;
-        if (activity !== undefined) {
-          if (activity.byDate[today] !== undefined) {
-            newByDate = {
-              ...activity.byDate,
-              today: delta
-            }
-          } else if (delta > 0) {
-            newByDate = {
-              ...activity.byDate,
-              today: activity.byDate[today] + delta
-            }
-          }
-        }
-
-        this.data.fileActivity[path] = {
-          ...activity,
-          byDate: newByDate
-        }
-      }
-    )
-  }
-  
-  /** 
-   * Make sure we have a LinkCache entry for this file. 
-   */
-  private readonly initLinkCache = async (file: TAbstractFile) => {
-    let oldCachedLinks = this.data.cachedLinks[file.path];
-    if (oldCachedLinks !== undefined) {
-      this.data.cachedLinks[file.path] = {
-        date: moment().format(DATE_FORMAT),
-        resolvedLinks: app.metadataCache.resolvedLinks[file.path],
-        unresolvedLinks: app.metadataCache.unresolvedLinks[file.path]
-      }
-    }
-  }
+  /** EVENT HANDLERS */
   
   /**
-   * Remove link cache entries from previous days.
-   */
-  private readonly updateDate = async (today: DateStr) => {
-    // Clear cache of anything older than today
-    this.data.cachedLinks = Object.fromEntries( 
-      Object.entries(this.data.cachedLinks).filter(
-        ([key, value]) => value.date != today
-      ) 
-    )
-
-    // Remove activity older than TTL?
-    // TODO
-  }
-  
-  /** EVENT HANDLERS IMPLEMENTING PLUGIN LOGIC */
-  
-  /**
-   * Just init our link cache on file open.
-   *  Hopefully this fires on workspace load.
-   */ 
-  private readonly handleOpen = async (file: TFile): Promise<void> => {
-    await this.initLinkCache(file)
-  }
-  /**
-   * Also make sure link cache is inited on edits.
-   */ 
-  private readonly handleModify = this.initLinkCache
-  
-  /**
-   * We keep our own cache of the MetadataCache links for any file opened or edited.
-   * When a file's cached links change, we diff vs our link cache,
-   * then apply that delta to our file statistics (counting inbound links.)
+   * Do we need to do anything? For new files?
    * 
-   * However, this can't actually CREATE entries in our linke cache, because
-   * this event fires for every file on startup and we don't want to cache 
-   * everything--so we only init our cache on file open, rename, or edit.
+   * - Existing unresolved links that point to this name will be updated in the background
+   *   to point to this file, but not updateCache fires.
+   */ 
+  private readonly handleCreate = async (file: TAbstractFile): Promise<void> => {
+    // console.log('handleCreate path: ' + file?.path)
+  }
+  
+  /**
+   * Called when a MetadataCache entry is updated for a file. 
    */
   private readonly handleUpdateCache = async (
     file: TFile, 
@@ -216,107 +95,92 @@ export default class FileActivityPlugin extends Plugin {
     cacheMetadata: CachedMetadata
   ): Promise<void> => {
 
-    let today = moment().format(DATE_FORMAT)
-    let oldCachedLinks = this.data.cachedLinks[file.path];
+    let links: string[] = []
+    cacheMetadata.links?.forEach((e: LinkCache) => {
+      // Resolve the link so we key everything by path
+      let link = app.metadataCache.getFirstLinkpathDest(e.link, file.path)
+      if (link !== null) { links.push(link.path)}
+    })
     
-    console.log('oldCachedLinks: ' + JSON.stringify(oldCachedLinks))
-    // What is this? Don't think we need it, better to distinguish resolved/unresolved.
-    console.log('cache: ' + JSON.stringify(cacheMetadata))
-    
-    if (oldCachedLinks !== undefined) {
-      // Don't fire on app start
-      return;
-    }
-    
-    let newCachedLinks: LinkCacheEntry = {
-      date: today,
-      resolvedLinks: app.metadataCache.resolvedLinks[file.path],
-      unresolvedLinks: app.metadataCache.unresolvedLinks[file.path]
-    }
-    
-    console.log('newCachedLinks: ' + JSON.stringify(app.metadataCache.resolvedLinks[file.path]))
-    this.updateDate(today)
-    this.data.cachedLinks[file.path as PathStr] = newCachedLinks
-    
-    let diff: LinkCacheDiff = this.diffCache(oldCachedLinks, newCachedLinks)
-    console.log('diff: ' + JSON.stringify(diff))
-    if (diff.resolvedLinks !== null || diff.unresolvedLinks !== null) {
-      await this.applyDiff(diff)
-    }
-    
+    console.log('handleUpdate path: ' + file?.path)
+
+    updateOutgoingLinks(
+      file.path,
+      file.stat.mtime,
+      links,
+      this.data
+    )
+
     this.saveData()
-    // TODO redraw view
+    this.view.redraw()
   };
 
             
   /**
-   * What does the metadata cache do on rename?
-   *  
+   * 1. Update our modification time cache to use the new name.
+   * 2. Update our backlink cache to use the new name.
+   * 3. Recompute everything that links to this name it.
+   * 
+   * A move = a rename that only changes the path.
+   * 
+   * Cases to handle:
+   * * Rename to the name of a current unresolved link
+   * * Rename to the same name as another file
+   * * Move without rename
+   * 
    */
   private readonly handleRename = async (
     file: TAbstractFile,
     oldPath: string,
   ): Promise<void> => {
-    
-    // make sure newName is not omitted
 
-    // Update link cache entry to new name
-    let cachedLinks = this.data.cachedLinks[oldPath]
-    if (cachedLinks !== undefined) {
-      delete this.data.cachedLinks[oldPath]
-      this.data.cachedLinks[file.path] = cachedLinks
+    console.log('handleRename path: ' + file.path + ' oldPath: ' + oldPath)
+    let modTime = (await app.vault.adapter.stat(file.path))?.mtime
+    if (modTime === undefined) {
+      console.log("No modtime for " + file.path)
+      return
     }
 
-    // Update activity entry to new name
-    let activity = this.data.fileActivity[oldPath]
-    if (activity !== undefined) {
-      delete this.data.fileActivity[oldPath]
-      this.data.fileActivity[file.path] = {
-        ...activity,
-        basename: file.name.replace(/\.[^/.]+$/, '')
-      }
-    }
+    let links = Object.keys({
+      // vault absolute paths
+      ...app.metadataCache.resolvedLinks[file.path],
+      // just the string, I presume
+      // ...app.metadataCache.unresolvedLinks[file.path]
+    })
+
+    renamePath(
+      file.path,
+      oldPath,
+      modTime,
+      links,
+      this.data
+    )
    
-    // update OTHER cache entries? hopefully not
-    // update app state?
-    // redraw view?
+    // TODO redraw view
+
     await this.saveData();
+    this.view.redraw()
   };
             
             
   /**
-   * What does the metadata cache do on deletes?
+   * What does the builtin metadata cache do on deletes?
    * Does it change existing links to unresolved?
    * 
-   * If we have cached links pointing TO this file, don't do anything,
-   * they're still useful, they can point to nothing. (Should they
-   * change to unresolved?)
-   *  
+   * Fires after previous file has a cache update. (EDIT NOT ALWAYS!) Does change old links to unresolved.
+   * When this fires have the old links been cleaned up—if we look up their metadataCache
+   * will they be gone?
+   * 
    */
   private readonly handleDelete = async (
     file: TAbstractFile,
   ): Promise<void> => {
+    console.log('handleDelete path: ' + file.path)
     
-    // Cancel all links FROM this file--if the file is re-created we want to
-    // end up with the right counts.
-    let cachedLinks = this.data.cachedLinks[file.path]
-    if (cachedLinks !== undefined) {
-      // create a diff of all its links with negative counts
-      let diff: LinkCacheDiff = {
-        resolvedLinks: Object.fromEntries(
-          Object.entries(cachedLinks.resolvedLinks).map(([key, value]) => [key, -1 * value])),
-        unresolvedLinks: Object.fromEntries(
-          Object.entries(cachedLinks.unresolvedLinks).map(([key, value]) => [key, -1 * value]))
-      }
+    deletePath(file.path, this.data)
 
-      console.log('diff: ' + JSON.stringify(diff))
-      await this.applyDiff(diff)
-      delete this.data.cachedLinks[file.path]
-    }
-   
-    // update app state?
-    // redraw view?
     await this.saveData();
+    this.view.redraw();
   };
       
               
@@ -331,8 +195,11 @@ export default class FileActivityPlugin extends Plugin {
   // }
   
   // public readonly pruneOmittedFiles = async (): Promise<void> => {
+  // let regexps = this.data.omittedPaths
+  // .filter((path) => path.length > 0)
+  // .map((pattern) => new RegExp(pattern))
   //   this.data.fileActivity = this.data.fileActivity.filter(
-  //     (file) => !this.regexps.some((r) => r.test(file.path))
+  //     (file) => !regexps.some((r) => r.test(file.path))
   //   );
   // };
 
@@ -346,41 +213,4 @@ export default class FileActivityPlugin extends Plugin {
   //       );
   //     }
   // };
-
-  /** UTILITY FUNCTIONS */
-
-  private readonly diffCache = (oldCache: LinkCacheEntry, newCache: LinkCacheEntry): LinkCacheDiff => {
-    return {
-      resolvedLinks: this.diffCacheEntries(oldCache.resolvedLinks, newCache.resolvedLinks),
-      unresolvedLinks: this.diffCacheEntries(oldCache.unresolvedLinks, newCache.unresolvedLinks),
-    }
-  }
-
-  /** 
-   * For each key, calculate the delta in its number of cached links.
-   * Implemented as a reduce over the old entries, subtracting each number from new entries
-   */
-  private readonly diffCacheEntries = (
-    oldEntries: Record<string, number>, 
-    newEntries: Record<string, number>
-    ): Record<string, number> | null => {
-      if (oldEntries === newEntries) { return null; }
-      return Object.entries(oldEntries).reduce<Record<string, number>>(
-        (acc: Record<string, number>, [k, v], i): Record<string, number> => {
-          if (acc[k] !== undefined) { 
-            let diff = acc[k] - v;
-            if (diff == 0) { 
-              delete acc[k];
-            } else {
-              acc[k] = diff;
-            }
-        } else {
-          acc[k] = -1 * v
-        }
-        return acc;
-      },
-      // Clone newEntries as initial accumulator
-      {... newEntries}
-    )
-  }
 }
