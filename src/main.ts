@@ -1,6 +1,6 @@
 
-import { CachedMetadata, LinkCache, moment, Plugin, TAbstractFile, TFile, WorkspaceLeaf } from 'obsidian';
-import { FileActivityPluginData, DEFAULT_DATA, updateOutgoingLinks, renamePath, deletePath } from './data';
+import { Plugin, TAbstractFile, TFile, WorkspaceLeaf } from 'obsidian';
+import { DEFAULT_DATA, deletePath, FileActivityPluginData, PathStr, renamePath, updateOutgoingLinks } from './data';
 import FileActivitySettingTab from './settings';
 import FileActivityListView from './view';
 
@@ -19,17 +19,23 @@ export default class FileActivityPlugin extends Plugin {
       LIST_VIEW_TYPE,
       (leaf) => (this.view = new FileActivityListView(leaf, this)),
       );
-      
-      this.initView();
+
+      if (this.app.workspace.layoutReady) {
+        this.initView();
+      } else {
+        this.registerEvent(this.app.workspace.on('layout-ready' as any, this.initView)); // tslint:disable-line
+      }
       this.addCommand({
         id: 'file-activity-open',
         name: 'Open File Activity Panel',
         callback: this.revealView
       });
-      this.registerEvent(this.app.vault.on('create', this.handleCreate));
       this.registerEvent(this.app.vault.on('rename', this.handleRename));
       this.registerEvent(this.app.vault.on('delete', this.handleDelete));
-      this.registerEvent(this.app.metadataCache.on('changed', this.handleUpdateCache));
+      this.registerEvent(this.app.metadataCache.on('resolve', this.handleResolve));
+      this.registerEvent(this.app.metadataCache.on('resolved', this.handleResolved));
+      // On app start/close, recompute entire state? Or at least clean out old state?
+
       this.addSettingTab(new FileActivitySettingTab(this.app, this));
   }
     
@@ -77,45 +83,31 @@ export default class FileActivityPlugin extends Plugin {
   /** EVENT HANDLERS */
   
   /**
-   * Do we need to do anything? For new files?
+   * Any time a file is re-indexed, we update its links.
    * 
-   * - Existing unresolved links that point to this name will be updated in the background
-   *   to point to this file, but not updateCache fires.
-   */ 
-  private readonly handleCreate = async (file: TAbstractFile): Promise<void> => {
-    // console.log('handleCreate path: ' + file?.path)
-  }
-  
-  /**
-   * Called when a MetadataCache entry is updated for a file. 
+   * This occurs after edits (including when a file it links to is renamed), for 
+   * all files at app startup, and—it appears—occasionally at other times.
    */
-  private readonly handleUpdateCache = async (
-    file: TFile, 
-    data: string, 
-    cacheMetadata: CachedMetadata
-  ): Promise<void> => {
-
-    let links: string[] = []
-    cacheMetadata.links?.forEach((e: LinkCache) => {
-      // Resolve the link so we key everything by path
-      let link = app.metadataCache.getFirstLinkpathDest(e.link, file.path)
-      if (link !== null) { links.push(link.path)}
-    })
-    
-    console.log('handleUpdate path: ' + file?.path)
-
+  private readonly handleResolve = async (file: TFile): Promise<void> => {
     updateOutgoingLinks(
       file.path,
       file.stat.mtime,
-      links,
+      this.getLinksForPath(file.path),
       this.data
     )
+  }
 
+  /**
+   * Fires when all queued files have been resolved. 
+   * 
+   * We save and update view here to avoid duplicate work when 
+   * there are a lot of changes, particularly at app startup.
+   */
+  private readonly handleResolved = async (): Promise<void> => {
     this.saveData()
     this.view.redraw()
-  };
-
-            
+  }
+          
   /**
    * 1. Update our modification time cache to use the new name.
    * 2. Update our backlink cache to use the new name.
@@ -141,48 +133,44 @@ export default class FileActivityPlugin extends Plugin {
       return
     }
 
-    let links = Object.keys({
-      // vault absolute paths
-      ...app.metadataCache.resolvedLinks[file.path],
-      // just the string, I presume
-      // ...app.metadataCache.unresolvedLinks[file.path]
-    })
-
     renamePath(
       file.path,
       oldPath,
       modTime,
-      links,
+      this.getLinksForPath(file.path),
       this.data
     )
-   
-    // TODO redraw view
-
+  
     await this.saveData();
     this.view.redraw()
   };
             
             
   /**
-   * What does the builtin metadata cache do on deletes?
-   * Does it change existing links to unresolved?
+   * On deletes, existing links become unresolved.
    * 
-   * Fires after previous file has a cache update. (EDIT NOT ALWAYS!) Does change old links to unresolved.
-   * When this fires have the old links been cleaned up—if we look up their metadataCache
-   * will they be gone?
+   * We clean up:
+   * * links from this file
+   * * links pointing to this file
+   * * modification time cache for this file
    * 
    */
   private readonly handleDelete = async (
     file: TAbstractFile,
   ): Promise<void> => {
-    console.log('handleDelete path: ' + file.path)
-    
     deletePath(file.path, this.data)
-
     await this.saveData();
     this.view.redraw();
   };
       
+  private readonly getLinksForPath = (path: PathStr) => {
+    return Object.keys({
+      // vault absolute paths
+      ...app.metadataCache.resolvedLinks[path],
+      // just the string, I presume
+      // ...app.metadataCache.unresolvedLinks[file.path]
+    })
+  }
               
   
   // TODO where is this called?

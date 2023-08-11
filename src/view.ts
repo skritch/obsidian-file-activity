@@ -1,5 +1,5 @@
 
-import { getIcon, ItemView, Menu, Notice, WorkspaceLeaf } from 'obsidian';
+import { getIcon, ItemView, Menu, Notice, TAbstractFile, TFile, WorkspaceLeaf } from 'obsidian';
 import FileActivityPlugin, { LIST_VIEW_TYPE } from './main';
 import { Backlinks, getTopLinks } from "./data";
 
@@ -85,12 +85,12 @@ export default class FileActivityListView extends ItemView {
         menu.showAtPosition({ x: event.clientX, y: event.clientY });
       });
 
-      // navFileTitleContent.addEventListener('click', (event: MouseEvent) => {
-      //   this.focusFile(activity, event.ctrlKey || event.metaKey);
-      // });
+      navFileTitleContent.addEventListener('click', (event: MouseEvent) => {
+        this.focusFile(path, event.ctrlKey || event.metaKey);
+      });
 
-      const navFileDelete = navFileTitle.createDiv({ cls: 'recent-files-file-delete' })
-      navFileDelete.appendChild(getIcon("x-circle") as SVGSVGElement);
+      // const navFileDelete = navFileTitle.createDiv({ cls: 'file-activity-file-delete' })
+      // navFileDelete.appendChild(getIcon("x-circle") as SVGSVGElement);
 
       // navFileDelete.addEventListener('click', async () => {
       //   await this.plugin.removeFile(f);
@@ -110,12 +110,10 @@ export default class FileActivityListView extends ItemView {
    * the most recent split. If the most recent split is pinned, this is set to
    * true.
    */
-  private readonly focusFile = async (file: Backlinks, shouldSplit = false): Promise<void> => {
-    const targetFile = this.app.vault
-      .getFiles()
-      .find((f) => f.path === file.path);
+  private readonly focusFile = async (path: string, shouldSplit = false): Promise<void> => {
+    const targetFile = this.app.vault.getAbstractFileByPath(path);
 
-    if (targetFile) {
+    if (targetFile !== null && (targetFile instanceof TFile)) {
       let leaf: WorkspaceLeaf | null = this.app.workspace.getMostRecentLeaf();
 
       if (shouldSplit || leaf === null || leaf.getViewState().pinned) {
@@ -127,7 +125,6 @@ export default class FileActivityListView extends ItemView {
           leaf = this.app.workspace.getLeaf('tab');
       }
       leaf.openFile(targetFile);
-	  
     } else {
       new Notice('Cannot find a file with that name');
       // await this.plugin.removeFile(file);

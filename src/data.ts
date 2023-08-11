@@ -1,23 +1,23 @@
 import { moment } from 'obsidian';
 
 type LinkText = string;
-type PathStr = string;
+export type PathStr = string;
+export type Links = Array<PathStr>
 type DateStr = string;
 type DateNumber = number;
 const DATE_FORMAT = "YYYY-MM-DD";
 
-// TODO tags, unresolved names
 export interface Backlinks {
+  // contains either a path + name, a tag, or an unresolved name
   path: PathStr;
   name: string;
+  // only contains paths
   backlinksBySource: Record<PathStr, DateNumber>;
-
-  // Computed state
-  backlinksByDate: Record<DateStr, number>;
 }
 
 export interface FileActivityPluginData {
   // State
+  // TODO  keys can be either paths, tags, or names
   backlinksByDestination: Record<PathStr, Backlinks>;
   cachedModificationTimes: Record<PathStr, DateNumber>;
 
@@ -41,18 +41,13 @@ export const DEFAULT_DATA: FileActivityPluginData = {
 };
 
 /**
- * Update state so that the only backlinks associated with the
- * provided path are those in newLinks.
- * 
- * This is triggered:
- * - when a file is modified (including response to the rename of a file it links to)
- * - when a file is renamed, for any files pointing to it.
- * - when a file is deleted (with an empty newLinks)
+ * Update state for path to contain only the provided links,
+ * if it modTime is newer than the cached value.
  */
 export function updateOutgoingLinks(
   path: PathStr, 
   modTime: DateNumber,
-  newLinks: Array<PathStr>,
+  newLinks: Links,
   data: FileActivityPluginData
 ) {
   if (data.cachedModificationTimes[path] === modTime) {
@@ -60,7 +55,10 @@ export function updateOutgoingLinks(
   } else {
     data.cachedModificationTimes[path] = modTime
   }
-
+  // TODO has to update paths, tags, and names
+  // it may be that a link that was formerly a path is now a name
+  // or a name is now a path. as long as we canonicalize on every pass
+  // this is fine.
   newLinks.forEach((otherPath) => {
     let otherEntry = data.backlinksByDestination[otherPath]
     if (otherEntry === undefined) {
@@ -69,22 +67,15 @@ export function updateOutgoingLinks(
         path: otherPath,
         name: pathToLinkText(otherPath),
         backlinksBySource: backlinksBySource,
-        backlinksByDate: countLinksByDate(backlinksBySource)
       }
     } else {
       otherEntry.backlinksBySource[path] = modTime
-      otherEntry.backlinksByDate = countLinksByDate(otherEntry.backlinksBySource)
     }
   })
 
   Object.entries(data.backlinksByDestination).forEach(([otherPath, otherEntry]) => {
     if (otherEntry.backlinksBySource[path] !== undefined && !newLinks.includes(otherPath)) {
       delete otherEntry.backlinksBySource[path]
-      // okay to mutate here?
-      // if (links.inboundLinks[path].length == 0) {
-      //   delete data.backlinks[k]
-      // }
-      otherEntry.backlinksByDate = countLinksByDate(otherEntry.backlinksBySource)
     }
   })
 }
@@ -102,15 +93,13 @@ export function deletePath(
   data: FileActivityPluginData
 ) {
   delete data.cachedModificationTimes[path]
+
+  // TODO This should switch its backlinks to an unresolved state.
+  // Perhaps obsidian will re-resolve them for us?
   delete data.backlinksByDestination[path]
   let backlinks = Object.values(data.backlinksByDestination)
   Object.entries(backlinks).forEach(([k, links]) => {
       delete links.backlinksBySource[path]
-      // okay to mutate here?
-      // if (links.inboundLinks[path].length == 0) {
-      //   delete data.backlinks[k]
-      // }
-      links.backlinksByDate = countLinksByDate(links.backlinksBySource)
     }
   )
 }
@@ -119,30 +108,28 @@ export function deletePath(
  * Update state to reflect the renaming of a file. 
  * 
  * This should:
- * - update its name in the backlink state, merging with any entry at the new name
- *   - actually if we rename the file, it appears that incoming links are updated in separate
- *     update cache operations, so we could just use the old data.
- *   - what happens if the new or old name collides with another file?
- * - update its existing outgoing links to use the new name. (Implemented
- *   as delete + update)
+ * - update its path in the backlink state, merging with any data at the new name
+ *   - if the old or new name is shared with another file this might not be quite right.
+ * - update its existing outgoing links to use the new path. (Implemented as delete + update)
  */
 export function renamePath(
   path: PathStr,
   oldPath: PathStr,
   modTime: DateNumber,
-  newLinks: Array<PathStr>,
+  newLinks: Links,
   data: FileActivityPluginData
 ) {
-  let newInboundLinks = {
-    ...data.backlinksByDestination[path]?.backlinksBySource,
-    ...data.backlinksByDestination[oldPath]?.backlinksBySource
-  }
+
   data.backlinksByDestination[path] = {
     path: path,
+    // TODO can tags be renamed?
     name: pathToLinkText(path),
-    backlinksBySource: newInboundLinks,
-    backlinksByDate: countLinksByDate(newInboundLinks)
+    // Use the links already at the new name, counting on Obsidian
+    // to update any links pointing to this file already.
+    // TODO 
+    backlinksBySource: data.backlinksByDestination[path]?.backlinksBySource || {}
   }
+
   deletePath(oldPath, data)
 
   updateOutgoingLinks(path, modTime, newLinks, data)
@@ -171,6 +158,8 @@ function dateNumberToString(n: DateNumber): DateStr {
 }
 
 export function getTopLinks(data: FileActivityPluginData) {
+  // TODO: remove empty entries here.
+  // TODO: count backlinks by date here
   let counts = Object.values(data.backlinksByDestination)
     .reduce((acc: Record<PathStr, number>, cur: Backlinks) => {
       let len = Object.values(cur.backlinksBySource).length
@@ -178,7 +167,7 @@ export function getTopLinks(data: FileActivityPluginData) {
       return acc
     }, {})
 
-  // Note sort is reversed to take top N
+  // Sort descending
   return Object.entries(counts).sort((([k1, c1], [k2, c2]) => c2 - c1))
     .slice(0, data.maxLength)
     .map(([path, ct]) => [data.backlinksByDestination[path].name, ct] as [string, number])
