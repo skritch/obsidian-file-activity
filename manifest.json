@@ -3,7 +3,7 @@
 	"name": "File Activity",
 	"version": "1.0.0",
 	"minAppVersion": "0.15.0",
-	"description": "Tracks files and tags you've recently edited or linked to.",
+	"description": "Tracks which files and tags you've recently edited or linked to.",
 	"author": "Sam Kritchevsky",
 	"authorUrl": "https://samkrit.ch",
 	"isDesktopOnly": false

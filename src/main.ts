@@ -4,12 +4,14 @@ import { DEFAULT_DATA, deletePath, FileActivityPluginData, PathStr, renamePath, 
 import FileActivitySettingTab from './settings';
 import FileActivityListView from './view';
 
+const PLUGIN_NAME = 'File Activity Plugin';
 export const LIST_VIEW_TYPE = 'file-activity';
 
 export default class FileActivityPlugin extends Plugin {
   public data: FileActivityPluginData;
   public view: FileActivityListView;
   
+  // Runs on app start, but not plugin load
   public async onload(): Promise<void> {
     console.log('File Activity: Loading plugin v' + this.manifest.version);
     
@@ -34,11 +36,11 @@ export default class FileActivityPlugin extends Plugin {
       this.registerEvent(this.app.vault.on('delete', this.handleDelete));
       this.registerEvent(this.app.metadataCache.on('resolve', this.handleResolve));
       this.registerEvent(this.app.metadataCache.on('resolved', this.handleResolved));
-      // On app start/close, recompute entire state? Or at least clean out old state?
+      // TODO: On app start/close, recompute entire state? Or at least clean out old state?
 
       this.addSettingTab(new FileActivitySettingTab(this.app, this));
   }
-    
+  
   public onunload(): void {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (this.app.workspace as any).unregisterHoverLinkSource(
@@ -81,12 +83,15 @@ export default class FileActivityPlugin extends Plugin {
   }
   
   /** EVENT HANDLERS */
+  // Note event handlers currently *mutate* the plugin .data object.
+  // Should we also pass in the Plugin itself?
   
   /**
-   * Any time a file is re-indexed, we update its links.
-   * 
-   * This occurs after edits (including when a file it links to is renamed), for 
-   * all files at app startup, and—it appears—occasionally at other times.
+   * This appears to fire:
+   * - On edits
+   *    - Including when a file it links to is renamed
+   * - For all files at app startup
+   * - Occasionally at other times
    */
   private readonly handleResolve = async (file: TFile): Promise<void> => {
     updateOutgoingLinks(
@@ -109,16 +114,15 @@ export default class FileActivityPlugin extends Plugin {
   }
           
   /**
-   * 1. Update our modification time cache to use the new name.
-   * 2. Update our backlink cache to use the new name.
-   * 3. Recompute everything that links to this name it.
+   * Handle file renames. We have a few things to do:
+   * - Update our modification time cache to use the new name.
+   * - Update our backlink cache to use the new name.
+   * - Recompute everything that links to this by name.
    * 
-   * A move = a rename that only changes the path.
-   * 
-   * Cases to handle:
-   * * Rename to the name of a current unresolved link
-   * * Rename to the same name as another file
-   * * Move without rename
+   * Edge Cases to handle:
+   * - Rename to the name of a current unresolved link
+   * - Rename to the same name as another file
+   * - Move without rename (only changes the path)
    * 
    */
   private readonly handleRename = async (
@@ -140,7 +144,7 @@ export default class FileActivityPlugin extends Plugin {
       this.getLinksForPath(file.path),
       this.data
     )
-  
+
     await this.saveData();
     this.view.redraw()
   };
@@ -150,10 +154,9 @@ export default class FileActivityPlugin extends Plugin {
    * On deletes, existing links become unresolved.
    * 
    * We clean up:
-   * * links from this file
-   * * links pointing to this file
-   * * modification time cache for this file
-   * 
+   * - links from this file
+   * - links pointing to this file, which become dangling links
+   * - modification time cache for this file
    */
   private readonly handleDelete = async (
     file: TAbstractFile,

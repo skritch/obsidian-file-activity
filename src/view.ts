@@ -1,7 +1,7 @@
 
 import { getIcon, ItemView, Menu, Notice, TAbstractFile, TFile, WorkspaceLeaf } from 'obsidian';
 import FileActivityPlugin, { LIST_VIEW_TYPE } from './main';
-import { Backlinks, getTopLinks } from "./data";
+import { BacklinkIndexEntry, getTopLinks } from "./data";
 
 
 export default class FileActivityListView extends ItemView {
@@ -46,7 +46,7 @@ export default class FileActivityListView extends ItemView {
 
       navFileTitleContent.setText('(' + ct + ') ' + path)
 
-      // if (openFile && activity. path === openFile.path) {
+      // if (openFile && activity.path === openFile.path) {
       //   navFileTitle.addClass('is-active');
       // }
 

@@ -35,10 +35,10 @@ export default class FileActivitySettingTab extends PluginSettingTab {
       textArea.inputEl.setAttr('rows', 6);
       textArea
       .setPlaceholder('^daily/\n^journal/\n\\.png$\nfoobar.*baz')
-      .setValue(this.plugin.data.omittedPaths.join('\n'));
+      .setValue(this.plugin.data.disallowedPaths.join('\n'));
       textArea.inputEl.onblur = (e: FocusEvent) => {
         const patterns = (e.target as HTMLInputElement).value;
-        this.plugin.data.omittedPaths = patterns.split('\n');
+        this.plugin.data.disallowedPaths = patterns.split('\n');
         // this.plugin.pruneOmittedFiles();
         this.plugin.saveData()
         this.plugin.view.redraw();

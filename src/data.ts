@@ -7,23 +7,35 @@ type DateStr = string;
 type DateNumber = number;
 const DATE_FORMAT = "YYYY-MM-DD";
 
-export interface Backlinks {
-  // contains either a path + name, a tag, or an unresolved name
+/**
+ * Object recording which other files link to this one.
+ * 
+ * TODO: add tags and unresolved names
+ */ 
+export interface BacklinkIndexEntry {
   path: PathStr;
-  name: string;
-  // only contains paths
-  backlinksBySource: Record<PathStr, DateNumber>;
+  name: LinkText;
+  linksBySource: Record<PathStr, DateNumber>;
 }
 
+/**
+ * Stores all state of the plugin:
+ * - backlink tracking
+ * - cache of file modification times (could remove this?)
+ * - settings
+ * 
+ * TODO: probably maintain UI state separately
+ */
 export interface FileActivityPluginData {
   // State
-  // TODO  keys can be either paths, tags, or names
-  backlinksByDestination: Record<PathStr, Backlinks>;
-  cachedModificationTimes: Record<PathStr, DateNumber>;
+  // Target Path -> {source paths and timestamp}
+  backlinkIndex: Record<PathStr, BacklinkIndexEntry>;
+  // Path -> last seen modification time
+  modTimes: Record<PathStr, DateNumber>;
 
   // Behavior Settings
-  activityTTLdays: number;
-  omittedPaths: string[];
+  activityTTLdays: number;  // TODO: replace with a "falloff" setting for display
+  disallowedPaths: string[];
   
   // UI settings
   maxLength: number;
@@ -32,85 +44,88 @@ export interface FileActivityPluginData {
 
 
 export const DEFAULT_DATA: FileActivityPluginData = {
-  backlinksByDestination: {},
+  backlinkIndex: {},
   activityTTLdays: 21,
-  omittedPaths: [],
+  disallowedPaths: [],
   maxLength: 50,
   openType: 'tab',
-  cachedModificationTimes: {}
+  modTimes: {}
 };
 
 /**
- * Update state for path to contain only the provided links,
- * if it modTime is newer than the cached value.
+ * Sync our state with a current list of links for a given source.
+ * 
+ * For each target, ensure this source is tracked and the modTime is fresh.
  */
 export function updateOutgoingLinks(
-  path: PathStr, 
+  sourcePath: PathStr, 
   modTime: DateNumber,
-  newLinks: Links,
+  sourceLinks: Links,
   data: FileActivityPluginData
 ) {
-  if (data.cachedModificationTimes[path] === modTime) {
+  // If we've seen a newer version of this source, no-op.
+  if (data.modTimes[sourcePath] >= modTime) {
     return
   } else {
-    data.cachedModificationTimes[path] = modTime
+    data.modTimes[sourcePath] = modTime
   }
-  // TODO has to update paths, tags, and names
-  // it may be that a link that was formerly a path is now a name
-  // or a name is now a path. as long as we canonicalize on every pass
-  // this is fine.
-  newLinks.forEach((otherPath) => {
-    let otherEntry = data.backlinksByDestination[otherPath]
-    if (otherEntry === undefined) {
-      let backlinksBySource = {[path]: modTime}
-      data.backlinksByDestination[otherPath] = {
-        path: otherPath,
-        name: pathToLinkText(otherPath),
-        backlinksBySource: backlinksBySource,
+  // TODO: skip if the file is on our disallow list
+
+  sourceLinks.forEach((targetPath) => {
+    let linksToTarget = data.backlinkIndex[targetPath]
+    if (linksToTarget === undefined) {
+      let backlinksBySource = {[sourcePath]: modTime}
+      data.backlinkIndex[targetPath] = {
+        path: targetPath,
+        name: pathToLinkText(targetPath),
+        linksBySource: backlinksBySource,
       }
     } else {
-      otherEntry.backlinksBySource[path] = modTime
+      linksToTarget.linksBySource[sourcePath] = modTime
     }
   })
 
-  Object.entries(data.backlinksByDestination).forEach(([otherPath, otherEntry]) => {
-    if (otherEntry.backlinksBySource[path] !== undefined && !newLinks.includes(otherPath)) {
-      delete otherEntry.backlinksBySource[path]
-    }
-  })
+  // Remove dead links
+  Object.entries(data.backlinkIndex)
+    .forEach(([targetPath, targetLinks]) => {
+      if (
+        targetLinks.linksBySource[sourcePath] !== undefined 
+        && !sourceLinks.includes(targetPath)
+      ) {
+        delete targetLinks.linksBySource[sourcePath]
+      }
+    })
 }
 
 /**
  * Update state to reflect the deleting of a file. 
- * 
- * This should:
- * - remove its name from the backlink state
- * - delete any backlinks using the old name.
- * - delete it from the modtime cache.
+ * - Remove its name from the backlink state
+ * - Delete any backlinks using the old name.
+ * - Delete it from the modtime cache.
  */
 export function deletePath(
   path: PathStr, 
   data: FileActivityPluginData
 ) {
-  delete data.cachedModificationTimes[path]
+  delete data.modTimes[path]
 
   // TODO This should switch its backlinks to an unresolved state.
   // Perhaps obsidian will re-resolve them for us?
-  delete data.backlinksByDestination[path]
-  let backlinks = Object.values(data.backlinksByDestination)
+  delete data.backlinkIndex[path]
+  let backlinks = Object.values(data.backlinkIndex)
   Object.entries(backlinks).forEach(([k, links]) => {
-      delete links.backlinksBySource[path]
+      delete links.linksBySource[path]
     }
   )
 }
 
 /**
  * Update state to reflect the renaming of a file. 
- * 
- * This should:
- * - update its path in the backlink state, merging with any data at the new name
- *   - if the old or new name is shared with another file this might not be quite right.
- * - update its existing outgoing links to use the new path. (Implemented as delete + update)
+ * - Update its path in the links-by-target state, merging with any data at the new path.
+ *   When a file is renamed, Obsidian will update files which link TO it to change the name 
+ *   of the link, we might index those before we handle the rename, in which case a record would
+ *   already exist.
+ * - Update its existing outgoing links to use the new path. (Implemented as delete + update)
  */
 export function renamePath(
   path: PathStr,
@@ -120,14 +135,12 @@ export function renamePath(
   data: FileActivityPluginData
 ) {
 
-  data.backlinksByDestination[path] = {
+  data.backlinkIndex[path] = {
     path: path,
-    // TODO can tags be renamed?
     name: pathToLinkText(path),
-    // Use the links already at the new name, counting on Obsidian
-    // to update any links pointing to this file already.
-    // TODO 
-    backlinksBySource: data.backlinksByDestination[path]?.backlinksBySource || {}
+    // Use the links already at the new name
+    // TODO: merge data from oldPath!
+    linksBySource: data.backlinkIndex[path]?.linksBySource || {}
   }
 
   deletePath(oldPath, data)
@@ -135,8 +148,6 @@ export function renamePath(
   updateOutgoingLinks(path, modTime, newLinks, data)
 }
 
-
-// TODO correct impl here, handle unresolved links
 function pathToLinkText(path: PathStr): LinkText {
   return path.replace(/^.*\//, '').replace(/\.[^/.]+$/, '')
 }
@@ -160,9 +171,9 @@ function dateNumberToString(n: DateNumber): DateStr {
 export function getTopLinks(data: FileActivityPluginData) {
   // TODO: remove empty entries here.
   // TODO: count backlinks by date here
-  let counts = Object.values(data.backlinksByDestination)
-    .reduce((acc: Record<PathStr, number>, cur: Backlinks) => {
-      let len = Object.values(cur.backlinksBySource).length
+  let counts = Object.values(data.backlinkIndex)
+    .reduce((acc: Record<PathStr, number>, cur: BacklinkIndexEntry) => {
+      let len = Object.values(cur.linksBySource).length
       if (len > 0) { acc[cur.path] = len}
       return acc
     }, {})
@@ -170,5 +181,5 @@ export function getTopLinks(data: FileActivityPluginData) {
   // Sort descending
   return Object.entries(counts).sort((([k1, c1], [k2, c2]) => c2 - c1))
     .slice(0, data.maxLength)
-    .map(([path, ct]) => [data.backlinksByDestination[path].name, ct] as [string, number])
+    .map(([path, ct]) => [data.backlinkIndex[path].name, ct] as [string, number])
 }
