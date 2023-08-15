@@ -1,7 +1,7 @@
 
-import { getIcon, ItemView, Menu, Notice, TAbstractFile, TFile, WorkspaceLeaf } from 'obsidian';
-import FileActivityPlugin, { LIST_VIEW_TYPE } from './main';
-import { BacklinkIndexEntry, getTopLinks } from "./data";
+import { ItemView, Menu, Notice, TFile, WorkspaceLeaf } from 'obsidian';
+import { getTopLinks } from "./data";
+import FileActivityPlugin, { VIEW_TYPE } from './main';
 
 
 export default class FileActivityListView extends ItemView {
@@ -21,7 +21,7 @@ export default class FileActivityListView extends ItemView {
   }
 
   public getViewType(): string {
-    return LIST_VIEW_TYPE;
+    return VIEW_TYPE;
   }
 
   public getDisplayText(): string {
@@ -38,17 +38,17 @@ export default class FileActivityListView extends ItemView {
     const rootEl = createDiv({ cls: 'nav-folder mod-root' });
     const childrenEl = rootEl.createDiv({ cls: 'nav-folder-children' });
 
-    let topLinks: [string, number][] = getTopLinks(this.plugin.data)
-    Object.values(topLinks).forEach(([path, ct]) => {
+    let topLinks: [string, string, number][] = getTopLinks(this.plugin.data)
+    Object.values(topLinks).forEach(([path, name, ct]) => {
       const navFile = childrenEl.createDiv({ cls: 'nav-file file-activity-file' });
       const navFileTitle = navFile.createDiv({ cls: 'nav-file-title file-activity-title' })
       const navFileTitleContent = navFileTitle.createDiv({ cls: 'nav-file-title-content file-activity-title-content' })
 
-      navFileTitleContent.setText('(' + ct + ') ' + path)
+      navFileTitleContent.setText('(' + ct + ') ' + name)
 
-      // if (openFile && activity.path === openFile.path) {
-      //   navFileTitle.addClass('is-active');
-      // }
+      if (openFile && path === openFile.path) {
+        navFileTitle.addClass('is-active');
+      }
 
       navFileTitle.setAttr('draggable', 'true');
       navFileTitle.addEventListener('dragstart', (event: DragEvent) => {
@@ -66,7 +66,7 @@ export default class FileActivityListView extends ItemView {
       navFileTitle.addEventListener('mouseover', (event: MouseEvent) => {
         this.app.workspace.trigger('hover-link', {
           event,
-          source: LIST_VIEW_TYPE,
+          source: VIEW_TYPE,
           hoverParent: rootEl,
           targetEl: navFile,
           linktext: path,
@@ -91,7 +91,6 @@ export default class FileActivityListView extends ItemView {
 
       // const navFileDelete = navFileTitle.createDiv({ cls: 'file-activity-file-delete' })
       // navFileDelete.appendChild(getIcon("x-circle") as SVGSVGElement);
-
       // navFileDelete.addEventListener('click', async () => {
       //   await this.plugin.removeFile(f);
       //   this.redraw();
@@ -127,7 +126,7 @@ export default class FileActivityListView extends ItemView {
       leaf.openFile(targetFile);
     } else {
       new Notice('Cannot find a file with that name');
-      // await this.plugin.removeFile(file);
+      // await this.plugin.removeFile(file); // needed?
       this.redraw();
     }
   };

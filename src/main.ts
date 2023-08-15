@@ -5,20 +5,20 @@ import FileActivitySettingTab from './settings';
 import FileActivityListView from './view';
 
 const PLUGIN_NAME = 'File Activity Plugin';
-export const LIST_VIEW_TYPE = 'file-activity';
+export const VIEW_TYPE = 'file-activity';
 
 export default class FileActivityPlugin extends Plugin {
   public data: FileActivityPluginData;
   public view: FileActivityListView;
   
-  // Runs on app start, but not plugin load
+  // Runs on app start and plugin load
   public async onload(): Promise<void> {
     console.log('File Activity: Loading plugin v' + this.manifest.version);
     
     await this.loadData();
     
     this.registerView(
-      LIST_VIEW_TYPE,
+      VIEW_TYPE,
       (leaf) => (this.view = new FileActivityListView(leaf, this)),
       );
 
@@ -36,16 +36,18 @@ export default class FileActivityPlugin extends Plugin {
       this.registerEvent(this.app.vault.on('delete', this.handleDelete));
       this.registerEvent(this.app.metadataCache.on('resolve', this.handleResolve));
       this.registerEvent(this.app.metadataCache.on('resolved', this.handleResolved));
-      // TODO: On app start/close, recompute entire state? Or at least clean out old state?
-
       this.addSettingTab(new FileActivitySettingTab(this.app, this));
+
+      await this.indexAll()
+      await this.saveData()
+      this.view.redraw()
   }
   
   public onunload(): void {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (this.app.workspace as any).unregisterHoverLinkSource(
-      LIST_VIEW_TYPE,
-      );
+      VIEW_TYPE,
+    );
   }
   
   public async loadData(): Promise<void> {
@@ -58,7 +60,7 @@ export default class FileActivityPlugin extends Plugin {
   
   private readonly initView = async (): Promise<void> => {
     let leaf: WorkspaceLeaf | null = null;
-    for (leaf of this.app.workspace.getLeavesOfType(LIST_VIEW_TYPE)) {
+    for (leaf of this.app.workspace.getLeavesOfType(VIEW_TYPE)) {
       if (leaf.view instanceof FileActivityListView) return;
       // The view instance was created by an older version of the plugin,
       // so clear it and recreate it (so it'll be the new version).
@@ -67,19 +69,36 @@ export default class FileActivityPlugin extends Plugin {
       break;
     }
     (leaf ?? this.app.workspace.getLeftLeaf(false)).setViewState({
-      type: LIST_VIEW_TYPE,
+      type: VIEW_TYPE,
       active: true,
     });
   };
   
   private readonly revealView = async () => {
-    let [leaf] = this.app.workspace.getLeavesOfType(LIST_VIEW_TYPE);
+    let [leaf] = this.app.workspace.getLeavesOfType(VIEW_TYPE);
     if (!leaf) {
       leaf = this.app.workspace.getRightLeaf(false);
-      await leaf.setViewState({ type: LIST_VIEW_TYPE });
+      await leaf.setViewState({ type: VIEW_TYPE });
     }
     
     this.app.workspace.revealLeaf(leaf);
+  }
+
+  private indexAll = async (): Promise<void> => {
+    let mdFiles = app.vault.getMarkdownFiles()
+    console.log(PLUGIN_NAME + ': Indexing ' + mdFiles.length + ' files.')
+    mdFiles.forEach((file) => {
+      // For a bulk index, skip anything that doesn't have links.
+      let links = this.getLinksForPath(file.path);
+      if (links.length > 0) {
+        updateOutgoingLinks(
+          file.path,
+          file.stat.mtime,
+          links,
+          this.data
+        )
+      }
+    })
   }
   
   /** EVENT HANDLERS */
@@ -95,14 +114,14 @@ export default class FileActivityPlugin extends Plugin {
    */
   private readonly handleResolve = async (file: TFile): Promise<void> => {
     if (!this.isMarkdown(file.path)) return;
-    
+
     const logStats = {
       path: file.path,
-      mtime: file.stat.mtime,
-      links: this.getLinksForPath(file.path),
-      data: this.data.backlinkIndex[file.path]
+      // mtime: file.stat.mtime,
+      // links: this.getLinksForPath(file.path),
+      // data: this.data.backlinkIndex[file.path]
     }
-    console.log('handleResolve: ' + JSON.stringify(logStats))
+    console.log(PLUGIN_NAME + ': handleResolve: ' + JSON.stringify(logStats))
 
     updateOutgoingLinks(
       file.path,
@@ -145,12 +164,12 @@ export default class FileActivityPlugin extends Plugin {
     const logStats = {
       path: file.path,
       oldPath: oldPath,
-      mtime: modTime,
-      links: this.getLinksForPath(file.path),
-      data: this.data.backlinkIndex[file.path],
-      oldData: this.data.backlinkIndex[oldPath],
+      // mtime: modTime,
+      // links: this.getLinksForPath(file.path),
+      // data: this.data.backlinkIndex[file.path],
+      // oldData: this.data.backlinkIndex[oldPath],
     }
-    console.log('handleRename: ' + JSON.stringify(logStats))
+    console.log(PLUGIN_NAME + ': handleRename: ' + JSON.stringify(logStats))
 
     if (modTime === undefined) {
       return
@@ -184,10 +203,10 @@ export default class FileActivityPlugin extends Plugin {
 
     const logStats = {
       path: file.path,
-      links: this.getLinksForPath(file.path),
-      data: this.data.backlinkIndex[file.path]
+      // links: this.getLinksForPath(file.path),
+      // data: this.data.backlinkIndex[file.path]
     }
-    console.log('handleDelete: ' + JSON.stringify(logStats))
+    console.log(PLUGIN_NAME + ': handleDelete: ' + JSON.stringify(logStats))
     deletePath(file.path, this.data)
     await this.saveData();
     this.view.redraw();

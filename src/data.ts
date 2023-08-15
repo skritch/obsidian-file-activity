@@ -164,7 +164,7 @@ function pathToLinkText(path: PathStr): LinkText {
 // }
 
 export function getTopLinks(data: FileActivityPluginData) {
-  // TODO: remove empty entries here.
+  // TODO: remove empty entries here?
   // TODO: count backlinks by date here
   let counts = Object.values(data.backlinkIndex)
     .reduce((acc: Record<PathStr, number>, cur: BacklinkIndexEntry) => {
@@ -174,7 +174,8 @@ export function getTopLinks(data: FileActivityPluginData) {
     }, {})
 
   // Sort descending
-  return Object.entries(counts).sort((([k1, c1], [k2, c2]) => c2 - c1))
+  return Object.entries(counts)
+    .sort((([k1, c1], [k2, c2]) => c2 - c1))
     .slice(0, data.maxLength)
-    .map(([path, ct]) => [data.backlinkIndex[path].name, ct] as [string, number])
+    .map(([path, ct]) => [path, data.backlinkIndex[path].name, ct] as [string, string, number ])
 }
