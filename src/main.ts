@@ -49,7 +49,7 @@ export default class FileActivityPlugin extends Plugin {
   }
   
   public async loadData(): Promise<void> {
-    this.data = Object.assign(DEFAULT_DATA, await super.loadData());
+    this.data = Object.assign(DEFAULT_DATA(), await super.loadData());
   }
   
   public async saveData(): Promise<void> {
@@ -94,6 +94,16 @@ export default class FileActivityPlugin extends Plugin {
    * - Occasionally at other times
    */
   private readonly handleResolve = async (file: TFile): Promise<void> => {
+    if (!this.isMarkdown(file.path)) return;
+    
+    const logStats = {
+      path: file.path,
+      mtime: file.stat.mtime,
+      links: this.getLinksForPath(file.path),
+      data: this.data.backlinkIndex[file.path]
+    }
+    console.log('handleResolve: ' + JSON.stringify(logStats))
+
     updateOutgoingLinks(
       file.path,
       file.stat.mtime,
@@ -129,11 +139,20 @@ export default class FileActivityPlugin extends Plugin {
     file: TAbstractFile,
     oldPath: string,
   ): Promise<void> => {
+    if (!this.isMarkdown(file.path)) return;
 
-    console.log('handleRename path: ' + file.path + ' oldPath: ' + oldPath)
-    let modTime = (await app.vault.adapter.stat(file.path))?.mtime
+    let modTime = (await app.vault.adapter.stat(file.path))?.mtime    
+    const logStats = {
+      path: file.path,
+      oldPath: oldPath,
+      mtime: modTime,
+      links: this.getLinksForPath(file.path),
+      data: this.data.backlinkIndex[file.path],
+      oldData: this.data.backlinkIndex[oldPath],
+    }
+    console.log('handleRename: ' + JSON.stringify(logStats))
+
     if (modTime === undefined) {
-      console.log("No modtime for " + file.path)
       return
     }
 
@@ -161,6 +180,14 @@ export default class FileActivityPlugin extends Plugin {
   private readonly handleDelete = async (
     file: TAbstractFile,
   ): Promise<void> => {
+    if (!this.isMarkdown(file.path)) return;
+
+    const logStats = {
+      path: file.path,
+      links: this.getLinksForPath(file.path),
+      data: this.data.backlinkIndex[file.path]
+    }
+    console.log('handleDelete: ' + JSON.stringify(logStats))
     deletePath(file.path, this.data)
     await this.saveData();
     this.view.redraw();
@@ -173,6 +200,10 @@ export default class FileActivityPlugin extends Plugin {
       // just the string, I presume
       // ...app.metadataCache.unresolvedLinks[file.path]
     })
+  }
+
+  readonly isMarkdown = (path: string): boolean => {
+    return path.endsWith(".md")
   }
               
   

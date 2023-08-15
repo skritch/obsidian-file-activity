@@ -1,5 +1,3 @@
-import { moment } from 'obsidian';
-
 type LinkText = string;
 export type PathStr = string;
 export type Links = Array<PathStr>
@@ -23,8 +21,6 @@ export interface BacklinkIndexEntry {
  * - backlink tracking
  * - cache of file modification times (could remove this?)
  * - settings
- * 
- * TODO: probably maintain UI state separately
  */
 export interface FileActivityPluginData {
   // State
@@ -43,13 +39,16 @@ export interface FileActivityPluginData {
 }
 
 
-export const DEFAULT_DATA: FileActivityPluginData = {
-  backlinkIndex: {},
-  activityTTLdays: 21,
-  disallowedPaths: [],
-  maxLength: 50,
-  openType: 'tab',
-  modTimes: {}
+// A functionr returning the default data (safer since we mutate)
+export const DEFAULT_DATA = ():  FileActivityPluginData => { 
+  return {
+    backlinkIndex: {},
+    modTimes: {},
+    activityTTLdays: 21,
+    disallowedPaths: [],
+    maxLength: 50,
+    openType: 'tab'
+  }
 };
 
 /**
@@ -63,22 +62,22 @@ export function updateOutgoingLinks(
   sourceLinks: Links,
   data: FileActivityPluginData
 ) {
-  // If we've seen a newer version of this source, no-op.
+  // If two-sided index, skip even the modTime step our links haven't changed
+
+  // No-op if we've seen a newer resolve event for this file.
   if (data.modTimes[sourcePath] >= modTime) {
     return
   } else {
     data.modTimes[sourcePath] = modTime
   }
   // TODO: skip if the file is on our disallow list
-
   sourceLinks.forEach((targetPath) => {
     let linksToTarget = data.backlinkIndex[targetPath]
     if (linksToTarget === undefined) {
-      let backlinksBySource = {[sourcePath]: modTime}
       data.backlinkIndex[targetPath] = {
         path: targetPath,
         name: pathToLinkText(targetPath),
-        linksBySource: backlinksBySource,
+        linksBySource: {[sourcePath]: modTime},
       }
     } else {
       linksToTarget.linksBySource[sourcePath] = modTime
@@ -86,6 +85,7 @@ export function updateOutgoingLinks(
   })
 
   // Remove dead links
+  // TODO: inefficient. Two-sided index?
   Object.entries(data.backlinkIndex)
     .forEach(([targetPath, targetLinks]) => {
       if (
@@ -93,8 +93,27 @@ export function updateOutgoingLinks(
         && !sourceLinks.includes(targetPath)
       ) {
         delete targetLinks.linksBySource[sourcePath]
+        // Remove the entry entirely if no links remain
+        if (Object.keys(targetLinks.linksBySource).length == 0) {
+          delete data.backlinkIndex[targetPath]
+        }
       }
     })
+}
+
+/**
+ * Update state to reflect the renaming of a file. 
+ * - Update its existing outgoing links to use the new path. (Implemented as delete + update)
+ */
+export function renamePath(
+  path: PathStr,
+  oldPath: PathStr,
+  modTime: DateNumber,
+  newLinks: Links,
+  data: FileActivityPluginData
+) {
+  deletePath(oldPath, data)
+  updateOutgoingLinks(path, modTime, newLinks, data)
 }
 
 /**
@@ -107,66 +126,42 @@ export function deletePath(
   path: PathStr, 
   data: FileActivityPluginData
 ) {
+  // Obsidian will re-resolve any files which linked to this one.
+  delete data.backlinkIndex[path]
   delete data.modTimes[path]
 
-  // TODO This should switch its backlinks to an unresolved state.
-  // Perhaps obsidian will re-resolve them for us?
-  delete data.backlinkIndex[path]
+  // Remove the outgoing links from our deleted file
+  // TODO: Inefficient: two-sided index would help here.
   let backlinks = Object.values(data.backlinkIndex)
-  Object.entries(backlinks).forEach(([k, links]) => {
-      delete links.linksBySource[path]
+  Object.entries(backlinks).forEach(([targetPath, targetLinks]) => {
+      delete targetLinks.linksBySource[path]
+      if (Object.keys(targetLinks.linksBySource).length == 0) {
+        delete data.backlinkIndex[targetPath]
+      }
     }
   )
 }
 
-/**
- * Update state to reflect the renaming of a file. 
- * - Update its path in the links-by-target state, merging with any data at the new path.
- *   When a file is renamed, Obsidian will update files which link TO it to change the name 
- *   of the link, we might index those before we handle the rename, in which case a record would
- *   already exist.
- * - Update its existing outgoing links to use the new path. (Implemented as delete + update)
- */
-export function renamePath(
-  path: PathStr,
-  oldPath: PathStr,
-  modTime: DateNumber,
-  newLinks: Links,
-  data: FileActivityPluginData
-) {
-
-  data.backlinkIndex[path] = {
-    path: path,
-    name: pathToLinkText(path),
-    // Use the links already at the new name
-    // TODO: merge data from oldPath!
-    linksBySource: data.backlinkIndex[path]?.linksBySource || {}
-  }
-
-  deletePath(oldPath, data)
-
-  updateOutgoingLinks(path, modTime, newLinks, data)
-}
-
+// TODO can we use Obsidian's own function for this?
 function pathToLinkText(path: PathStr): LinkText {
   return path.replace(/^.*\//, '').replace(/\.[^/.]+$/, '')
 }
 
-function countLinksByDate(links: Record<PathStr, DateNumber>) {
-  return Object.values(links).reduce((acc: Record<DateStr, number>, cur: DateNumber) => {
-    let curStr = dateNumberToString(cur)
-    if (acc[curStr] !== undefined) {
-      acc[curStr] = acc[curStr] + 1
-    } else {
-      acc[curStr] = 1
-    }
-    return acc
-  }, {})
-}
+// function countLinksByDate(links: Record<PathStr, DateNumber>) {
+//   return Object.values(links).reduce((acc: Record<DateStr, number>, cur: DateNumber) => {
+//     let curStr = dateNumberToString(cur)
+//     if (acc[curStr] !== undefined) {
+//       acc[curStr] = acc[curStr] + 1
+//     } else {
+//       acc[curStr] = 1
+//     }
+//     return acc
+//   }, {})
+// }
 
-function dateNumberToString(n: DateNumber): DateStr {
-  return moment.unix(n / 1000).format(DATE_FORMAT)
-}
+// function dateNumberToString(n: DateNumber): DateStr {
+//   return moment.unix(n / 1000).format(DATE_FORMAT)
+// }
 
 export function getTopLinks(data: FileActivityPluginData) {
   // TODO: remove empty entries here.

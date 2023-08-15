@@ -50,7 +50,7 @@ export default class FileActivitySettingTab extends PluginSettingTab {
     .setDesc('Maximum number of files to track.')
     .addText((text) => {
       text.inputEl.setAttr('type', 'number');
-      text.inputEl.setAttr('placeholder', DEFAULT_DATA.maxLength);
+      text.inputEl.setAttr('placeholder', DEFAULT_DATA().maxLength);
       text
       .setValue(this.plugin.data.maxLength?.toString())
       .onChange((value) => {
