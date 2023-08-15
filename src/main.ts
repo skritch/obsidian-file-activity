@@ -1,6 +1,6 @@
 
 import { Plugin, TAbstractFile, TFile, WorkspaceLeaf } from 'obsidian';
-import { DEFAULT_DATA, deletePath, FileActivityPluginData, PathStr, renamePath, updateOutgoingLinks } from './data';
+import { DEFAULT_DATA, remove, FileActivityPluginData, PathStr, rename, update } from './data';
 import FileActivitySettingTab from './settings';
 import FileActivityListView from './view';
 
@@ -88,13 +88,14 @@ export default class FileActivityPlugin extends Plugin {
     let mdFiles = app.vault.getMarkdownFiles()
     console.log(PLUGIN_NAME + ': Indexing ' + mdFiles.length + ' files.')
     mdFiles.forEach((file) => {
+      let [links, unresolvedLinks] = this.getLinksForPath(file.path)
       // For a bulk index, skip anything that doesn't have links.
-      let links = this.getLinksForPath(file.path);
-      if (links.length > 0) {
-        updateOutgoingLinks(
+      if (links.length > 0 || unresolvedLinks.length > 0) {
+        update(
           file.path,
           file.stat.mtime,
           links,
+          unresolvedLinks,
           this.data
         )
       }
@@ -103,30 +104,34 @@ export default class FileActivityPlugin extends Plugin {
   
   /** EVENT HANDLERS */
   // Note event handlers currently *mutate* the plugin .data object.
-  // Should we also pass in the Plugin itself?
   
   /**
    * This appears to fire:
    * - On edits
-   *    - Including when a file it links to is renamed
+   *   - Including when a file this file links to is renamed, which triggers an edit for this file
+   *   - Including when a file is renamed to match an unresolved link in this file, even though 
+   *     this doesn't trigger a rename
    * - For all files at app startup
-   * - Occasionally at other times
+   * - Occasionally at other times, it appears.
    */
   private readonly handleResolve = async (file: TFile): Promise<void> => {
     if (!this.isMarkdown(file.path)) return;
 
     const logStats = {
       path: file.path,
-      // mtime: file.stat.mtime,
-      // links: this.getLinksForPath(file.path),
-      // data: this.data.backlinkIndex[file.path]
+      mtime: file.stat.mtime,
+      newLinks: this.getLinksForPath(file.path),
+      links: this.data.linkIndex[file.path],
+      unresolvedLinks: this.data.unresolvedLinkIndex[file.path]
     }
     console.log(PLUGIN_NAME + ': handleResolve: ' + JSON.stringify(logStats))
 
-    updateOutgoingLinks(
+    let [links, unresolvedLinks] = this.getLinksForPath(file.path)
+    update(
       file.path,
       file.stat.mtime,
-      this.getLinksForPath(file.path),
+      links,
+      unresolvedLinks,
       this.data
     )
   }
@@ -141,19 +146,7 @@ export default class FileActivityPlugin extends Plugin {
     this.saveData()
     this.view.redraw()
   }
-          
-  /**
-   * Handle file renames. We have a few things to do:
-   * - Update our modification time cache to use the new name.
-   * - Update our backlink cache to use the new name.
-   * - Recompute everything that links to this by name.
-   * 
-   * Edge Cases to handle:
-   * - Rename to the name of a current unresolved link
-   * - Rename to the same name as another file
-   * - Move without rename (only changes the path)
-   * 
-   */
+  
   private readonly handleRename = async (
     file: TAbstractFile,
     oldPath: string,
@@ -164,10 +157,10 @@ export default class FileActivityPlugin extends Plugin {
     const logStats = {
       path: file.path,
       oldPath: oldPath,
-      // mtime: modTime,
-      // links: this.getLinksForPath(file.path),
-      // data: this.data.backlinkIndex[file.path],
-      // oldData: this.data.backlinkIndex[oldPath],
+      mtime: modTime,
+      newLinks: this.getLinksForPath(file.path),
+      links: this.data.linkIndex[file.path],
+      unresolvedLinks: this.data.unresolvedLinkIndex[file.path]
     }
     console.log(PLUGIN_NAME + ': handleRename: ' + JSON.stringify(logStats))
 
@@ -175,11 +168,13 @@ export default class FileActivityPlugin extends Plugin {
       return
     }
 
-    renamePath(
+    let [links, unresolvedLinks] = this.getLinksForPath(file.path)
+    rename(
       file.path,
       oldPath,
       modTime,
-      this.getLinksForPath(file.path),
+      links, 
+      unresolvedLinks,
       this.data
     )
 
@@ -187,15 +182,6 @@ export default class FileActivityPlugin extends Plugin {
     this.view.redraw()
   };
             
-            
-  /**
-   * On deletes, existing links become unresolved.
-   * 
-   * We clean up:
-   * - links from this file
-   * - links pointing to this file, which become dangling links
-   * - modification time cache for this file
-   */
   private readonly handleDelete = async (
     file: TAbstractFile,
   ): Promise<void> => {
@@ -203,22 +189,26 @@ export default class FileActivityPlugin extends Plugin {
 
     const logStats = {
       path: file.path,
-      // links: this.getLinksForPath(file.path),
-      // data: this.data.backlinkIndex[file.path]
+      newLinks: this.getLinksForPath(file.path),
+      links: this.data.linkIndex[file.path],
+      unresolvedLinks: this.data.unresolvedLinkIndex[file.path]
     }
     console.log(PLUGIN_NAME + ': handleDelete: ' + JSON.stringify(logStats))
-    deletePath(file.path, this.data)
+    remove(file.path, this.data)
     await this.saveData();
     this.view.redraw();
   };
       
+  /**
+   * Returns [[resolved links], [unresolved links]]
+   */
   private readonly getLinksForPath = (path: PathStr) => {
-    return Object.keys({
-      // vault absolute paths
-      ...app.metadataCache.resolvedLinks[path],
-      // just the string, I presume
-      // ...app.metadataCache.unresolvedLinks[file.path]
-    })
+    let links = app.metadataCache.resolvedLinks[path];
+    let unresolvedLinks = app.metadataCache.unresolvedLinks[path]
+    return [
+      links !== undefined ? Object.keys(links) : [],
+      unresolvedLinks !== undefined ? Object.keys(unresolvedLinks) : []
+    ]
   }
 
   readonly isMarkdown = (path: string): boolean => {
