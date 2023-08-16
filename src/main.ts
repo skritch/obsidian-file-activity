@@ -117,14 +117,14 @@ export default class FileActivityPlugin extends Plugin {
   private readonly handleResolve = async (file: TFile): Promise<void> => {
     if (!this.isMarkdown(file.path)) return;
 
-    const logStats = {
-      path: file.path,
-      mtime: file.stat.mtime,
-      newLinks: this.getLinksForPath(file.path),
-      links: this.data.linkIndex[file.path],
-      unresolvedLinks: this.data.unresolvedLinkIndex[file.path]
-    }
-    console.log(PLUGIN_NAME + ': handleResolve: ' + JSON.stringify(logStats))
+    // const logStats = {
+    //   path: file.path,
+    //   mtime: file.stat.mtime,
+    //   newLinks: this.getLinksForPath(file.path),
+    //   links: this.data.linkIndex[file.path],
+    //   unresolvedLinks: this.data.unresolvedLinkIndex[file.path]
+    // }
+    // console.log(PLUGIN_NAME + ': handleResolve: ' + JSON.stringify(logStats))
 
     let [links, unresolvedLinks] = this.getLinksForPath(file.path)
     update(
@@ -151,18 +151,18 @@ export default class FileActivityPlugin extends Plugin {
     file: TAbstractFile,
     oldPath: string,
   ): Promise<void> => {
-    if (!this.isMarkdown(file.path)) return;
+    if (!this.isMarkdown(file.path) || !this.isMarkdown(oldPath)) return;
 
     let modTime = (await app.vault.adapter.stat(file.path))?.mtime    
-    const logStats = {
-      path: file.path,
-      oldPath: oldPath,
-      mtime: modTime,
-      newLinks: this.getLinksForPath(file.path),
-      links: this.data.linkIndex[file.path],
-      unresolvedLinks: this.data.unresolvedLinkIndex[file.path]
-    }
-    console.log(PLUGIN_NAME + ': handleRename: ' + JSON.stringify(logStats))
+    // const logStats = {
+    //   path: file.path,
+    //   oldPath: oldPath,
+    //   mtime: modTime,
+    //   newLinks: this.getLinksForPath(file.path),
+    //   links: this.data.linkIndex[file.path],
+    //   unresolvedLinks: this.data.unresolvedLinkIndex[file.path]
+    // }
+    // console.log(PLUGIN_NAME + ': handleRename: ' + JSON.stringify(logStats))
 
     if (modTime === undefined) {
       return
@@ -187,13 +187,13 @@ export default class FileActivityPlugin extends Plugin {
   ): Promise<void> => {
     if (!this.isMarkdown(file.path)) return;
 
-    const logStats = {
-      path: file.path,
-      newLinks: this.getLinksForPath(file.path),
-      links: this.data.linkIndex[file.path],
-      unresolvedLinks: this.data.unresolvedLinkIndex[file.path]
-    }
-    console.log(PLUGIN_NAME + ': handleDelete: ' + JSON.stringify(logStats))
+    // const logStats = {
+    //   path: file.path,
+    //   newLinks: this.getLinksForPath(file.path),
+    //   links: this.data.linkIndex[file.path],
+    //   unresolvedLinks: this.data.unresolvedLinkIndex[file.path]
+    // }
+    // console.log(PLUGIN_NAME + ': handleDelete: ' + JSON.stringify(logStats))
     remove(file.path, this.data)
     await this.saveData();
     this.view.redraw();

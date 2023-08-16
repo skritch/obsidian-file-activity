@@ -26,8 +26,6 @@ export default class FileActivitySettingTab extends PluginSettingTab {
     fragment.append(link);
     fragment.append(' for help.');
     
-    // todo allow only .md extensions?
-    
     new Setting(containerEl)
     .setName('Omitted pathname patterns')
     .setDesc(fragment)

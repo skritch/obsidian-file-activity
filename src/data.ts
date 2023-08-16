@@ -1,7 +1,9 @@
-type LinkText = string;
+
+
 export type PathStr = string;
+type LinkText = string;
 type DateNumber = number;
-const DATE_FORMAT = "YYYY-MM-DD";
+type LinksByDay = Array<number>;
 
 /**
  * Object recording which other files link to this one.
@@ -15,10 +17,9 @@ export interface IndexEntry {
 
 /**
  * Stores all state of the plugin:
- * - backlink tracking
+ * - backlink tracking  (TODO: add tags)
  * - cache of file modification times (could remove this?)
  * - settings
- * TODO: add tags
  */
 export interface FileActivityPluginData {
   // Reverse index of paths -> paths which link to them
@@ -31,12 +32,20 @@ export interface FileActivityPluginData {
   modTimes: Record<PathStr, DateNumber>;
 
   // Settings
-  activityTTLdays: number;  // TODO: replace with a "falloff" setting for display
-  disallowedPaths: string[];
+  activityTTLdays: number; // Maybe we ignore links in files older than this many days?
+  weightFalloff: number;  // Number greater than zero. Higher = more recent links go to the top of the list.
   maxLength: number;
+  disallowedPaths: string[];
   openType: string;
 }
 
+export interface DisplayEntry {
+  name: LinkText,
+  counts: LinksByDay,
+  total: number,
+  weight: number,
+  path?: PathStr
+}
 
 // A function returning the default data (safer since we mutate)
 export const DEFAULT_DATA = ():  FileActivityPluginData => { 
@@ -44,7 +53,8 @@ export const DEFAULT_DATA = ():  FileActivityPluginData => {
     linkIndex: {},
     unresolvedLinkIndex: {},
     modTimes: {},
-    activityTTLdays: 21,
+    activityTTLdays: 31,
+    weightFalloff: 7,
     disallowedPaths: [],
     maxLength: 50,
     openType: 'tab'
@@ -165,36 +175,81 @@ function pathToLinkText(path: PathStr): LinkText {
   return path.replace(/^.*\//, '').replace(/\.[^/.]+$/, '')
 }
 
-// function countLinksByDate(links: Record<PathStr, DateNumber>) {
-//   return Object.values(links).reduce((acc: Record<DateStr, number>, cur: DateNumber) => {
-//     let curStr = dateNumberToString(cur)
-//     if (acc[curStr] !== undefined) {
-//       acc[curStr] = acc[curStr] + 1
-//     } else {
-//       acc[curStr] = 1
-//     }
-//     return acc
-//   }, {})
-// }
 
-// function dateNumberToString(n: DateNumber): DateStr {
-//   return moment.unix(n / 1000).format(DATE_FORMAT)
-// }
+/**
+ * Generates the entries displayed in the plugin. The top `maxLength` entries
+ * are chosen based on the exponentially-weighted sum of the count of links
+ * per day.
+ * 
+ * TODO: this going to get calculated for every link on every refresh.
+ * Better to do some dirty flagging:
+ * - skip the whole step if nothing has changed
+ * - cache the DisplayEntries unless they've changed, or the day has turned
+ * - but do this in a way that won't write to storage...?  
+ */
+export function getWeightedTopLinks(
+  data: FileActivityPluginData
+): Array<DisplayEntry> {
+  let linkCounts: Array<DisplayEntry> = Object.entries(data.linkIndex)
+    .map(([path, entry]: [PathStr, IndexEntry]) => {
+      let counts = countlinksByDate(entry, data.activityTTLdays)
+      return {
+        name: entry.name,
+        counts: counts,
+        total: counts.reduce((acc, cur) => acc + cur, 0),
+        weight: weightLinksByDay(counts, data.weightFalloff),
+        path: path
+      }
+    });
 
-export function getTopLinks(data: FileActivityPluginData) {
-  // TODO: remove empty entries here?
-  // TODO: count backlinks by date here
-  let counts: Record<PathStr, number> = 
-    Object.entries(data.linkIndex)
-      .reduce((acc: Record<PathStr, number>, cur: [PathStr, IndexEntry]) => {
-        let len = Object.values(cur[1].linksBySource).length
-        if (len > 0) { acc[cur[0]] = len}
-        return acc
-      }, {})
+  let unresolvedLinkCounts: Array<DisplayEntry> = Object.values(data.unresolvedLinkIndex)
+    .map((entry: IndexEntry) => {
+      let counts = countlinksByDate(entry, data.activityTTLdays)
+      return {
+        name: entry.name,
+        counts: counts,
+        total: counts.reduce((acc, cur) => acc + cur, 0),
+        weight: weightLinksByDay(counts, data.weightFalloff)
+      }
+    });
 
-  // Sort descending
-  return Object.entries(counts)
-    .sort((([k1, c1], [k2, c2]) => c2 - c1))
+  let topN = linkCounts.concat(unresolvedLinkCounts)
+    .sort(((e1, e2) => e2.weight - e1.weight))  // Sort by weight descending
     .slice(0, data.maxLength)
-    .map(([path, ct]) => [path, data.linkIndex[path].name, ct] as [string, string, number ])
+
+  return topN
+}
+
+/**
+ * Return an array of length `max_days` representing the number of links
+ * on each day: [today, yesterday, t-2, ..., t - (max_days - 1) ]
+ */
+export function countlinksByDate(links: IndexEntry, maxDays: number): LinksByDay {
+  let today = new Date().setHours(0, 0, 0, 0)
+  let msPerDay = 1000 * 60 * 60 * 24
+  let init: LinksByDay = new Array<number>(maxDays).fill(0)
+  return Object
+    .values(links.linksBySource)
+    .reduce((acc: LinksByDay, cur: DateNumber) => {
+        let diffDays = Math.floor((today - (new Date(cur)).setHours(0, 0, 0, 0)) / msPerDay)
+        if (diffDays < 0) {
+          acc[0] = acc[0] + 1
+        } else if (diffDays < maxDays) {
+          acc[diffDays] = acc[diffDays] + 1
+        }
+        return acc
+      }, 
+      init
+  )
+}
+
+/**
+ * Returns sum_n c_n * exp(-n / falloff)), where c_n = the count of links created n days ago.
+ * 
+ * This is the numerator of an exponential-weighted-average.
+ */
+function weightLinksByDay(counts: LinksByDay, falloff: number): number {
+  return counts.reduce((acc: number, cur: number, i: number) => {
+    return acc + cur * Math.exp(-1 * i / falloff)
+  }, 0)
 }

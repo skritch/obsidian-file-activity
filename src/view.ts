@@ -1,6 +1,6 @@
 
 import { ItemView, Menu, Notice, TFile, WorkspaceLeaf } from 'obsidian';
-import { getTopLinks } from "./data";
+import { DisplayEntry, getWeightedTopLinks } from "./data";
 import FileActivityPlugin, { VIEW_TYPE } from './main';
 
 
@@ -38,56 +38,62 @@ export default class FileActivityListView extends ItemView {
     const rootEl = createDiv({ cls: 'nav-folder mod-root' });
     const childrenEl = rootEl.createDiv({ cls: 'nav-folder-children' });
 
-    let topLinks: [string, string, number][] = getTopLinks(this.plugin.data)
-    Object.values(topLinks).forEach(([path, name, ct]) => {
+    let topLinks: Array<DisplayEntry> = getWeightedTopLinks(this.plugin.data)
+
+    Object.values(topLinks).forEach((entry) => {
       const navFile = childrenEl.createDiv({ cls: 'nav-file file-activity-file' });
       const navFileTitle = navFile.createDiv({ cls: 'nav-file-title file-activity-title' })
       const navFileTitleContent = navFileTitle.createDiv({ cls: 'nav-file-title-content file-activity-title-content' })
 
-      navFileTitleContent.setText('(' + ct + ') ' + name)
+      navFileTitleContent.setText('(' + entry.total + ' [' + Math.floor(entry.weight) + ']) ' + entry.name)
 
-      if (openFile && path === openFile.path) {
+      if (openFile && entry.path === openFile.path) {
         navFileTitle.addClass('is-active');
       }
 
       navFileTitle.setAttr('draggable', 'true');
-      navFileTitle.addEventListener('dragstart', (event: DragEvent) => {
-        const file = this.app.metadataCache.getFirstLinkpathDest(
-          path,
-          '',
-        );
+      
+      // If it's a file rather than an unresolved link, make it a link.
+      if (entry.path !== undefined) {
+        let path = entry.path;
+        navFileTitle.addEventListener('dragstart', (event: DragEvent) => {
+          const file = this.app.metadataCache.getFirstLinkpathDest(
+            path,
+            '',
+          );
 
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const dragManager = (this.app as any).dragManager;
-        const dragData = dragManager.dragFile(event, file);
-        dragManager.onDragStart(event, dragData);
-      });
-
-      navFileTitle.addEventListener('mouseover', (event: MouseEvent) => {
-        this.app.workspace.trigger('hover-link', {
-          event,
-          source: VIEW_TYPE,
-          hoverParent: rootEl,
-          targetEl: navFile,
-          linktext: path,
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const dragManager = (this.app as any).dragManager;
+          const dragData = dragManager.dragFile(event, file);
+          dragManager.onDragStart(event, dragData);
         });
-      });
 
-      navFileTitle.addEventListener('contextmenu', (event: MouseEvent) => {
-        const menu = new Menu();
-        const file = this.app.vault.getAbstractFileByPath(path);
-        this.app.workspace.trigger(
-          'file-menu',
-          menu,
-          file,
-          'link-context-menu',
-        );
-        menu.showAtPosition({ x: event.clientX, y: event.clientY });
-      });
+        navFileTitle.addEventListener('mouseover', (event: MouseEvent) => {
+          this.app.workspace.trigger('hover-link', {
+            event,
+            source: VIEW_TYPE,
+            hoverParent: rootEl,
+            targetEl: navFile,
+            linktext: entry.path,
+          });
+        });
 
-      navFileTitleContent.addEventListener('click', (event: MouseEvent) => {
-        this.focusFile(path, event.ctrlKey || event.metaKey);
-      });
+        navFileTitle.addEventListener('contextmenu', (event: MouseEvent) => {
+          const menu = new Menu();
+          const file = this.app.vault.getAbstractFileByPath(path);
+          this.app.workspace.trigger(
+            'file-menu',
+            menu,
+            file,
+            'link-context-menu',
+          );
+          menu.showAtPosition({ x: event.clientX, y: event.clientY });
+        });
+
+        navFileTitleContent.addEventListener('click', (event: MouseEvent) => {
+          this.focusFile(path, event.ctrlKey || event.metaKey);
+        });
+      }
 
       // const navFileDelete = navFileTitle.createDiv({ cls: 'file-activity-file-delete' })
       // navFileDelete.appendChild(getIcon("x-circle") as SVGSVGElement);

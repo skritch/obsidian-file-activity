@@ -221,12 +221,7 @@ describe("File Activity Plugin", () => {
       expect(data).toEqual(finalData);
 
     });
-
-    // TODOs (maybe)
-    // handle case where the resolve for the new name happens before the rename from the old? we can't right?
-    // handle rename to same name as an existing file but at a new path
-    // corner case: rename to/from a markdown name. Don't think you can?
-    // corner case: fires for directories, probably for other non-MD files
+    // corner case? handle rename to same name as an existing file but at a new path
   })
   
   describe("delete", () => {
