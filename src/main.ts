@@ -1,6 +1,6 @@
 
 import { Plugin, TAbstractFile, TFile, WorkspaceLeaf } from 'obsidian';
-import { DEFAULT_DATA, remove, FileActivityPluginData, PathStr, rename, update } from './data';
+import { DEFAULT_DATA, remove, FileActivityPluginData, PathStr, rename, update, Link, LinkText, ResolvedLink } from './data';
 import FileActivitySettingTab from './settings';
 import FileActivityListView from './view';
 
@@ -88,14 +88,13 @@ export default class FileActivityPlugin extends Plugin {
     let mdFiles = app.vault.getMarkdownFiles()
     console.log(PLUGIN_NAME + ': Indexing ' + mdFiles.length + ' files.')
     mdFiles.forEach((file) => {
-      let [links, unresolvedLinks] = this.getLinksForPath(file.path)
+      let links = this.getLinksForPath(file.path)
       // For a bulk index, skip anything that doesn't have links.
-      if (links.length > 0 || unresolvedLinks.length > 0) {
+      if (links.length > 0) {
         update(
           file.path,
           file.stat.mtime,
           links,
-          unresolvedLinks,
           this.data
         )
       }
@@ -115,12 +114,10 @@ export default class FileActivityPlugin extends Plugin {
    * - Occasionally at other times, it appears.
    */
   private readonly handleResolve = async (file: TFile): Promise<void> => {
-    let [links, unresolvedLinks] = this.getLinksForPath(file.path)
     update(
       file.path,
       file.stat.mtime,
-      links,
-      unresolvedLinks,
+      this.getLinksForPath(file.path),
       this.data
     )
   }
@@ -146,13 +143,11 @@ export default class FileActivityPlugin extends Plugin {
       return
     }
 
-    let [links, unresolvedLinks] = this.getLinksForPath(file.path)
     rename(
       file.path,
       oldPath,
       modTime,
-      links, 
-      unresolvedLinks,
+      this.getLinksForPath(file.path),
       this.data
     )
 
@@ -167,16 +162,38 @@ export default class FileActivityPlugin extends Plugin {
     await this.saveData();
     this.view.redraw();
   };
+
+
+  // TODO can we use Obsidian's own function for this? MetadataCache.fileToLinktext?
+  pathToLinkText = (path: PathStr): LinkText => {
+    return path.replace(/^.*\//, '').replace(/\.[^/.]+$/, '')
+  }
       
   /**
    * Returns [[resolved links], [unresolved links]]
    */
-  private getLinksForPath = (path: PathStr) => {
-    let links = app.metadataCache.resolvedLinks[path];
+  private getLinksForPath = (path: PathStr): Array<Link> => {
+    let links: Array<Link> = []
+    let resolvedlinks = app.metadataCache.resolvedLinks[path];
     let unresolvedLinks = app.metadataCache.unresolvedLinks[path]
-    return [
-      links !== undefined ? Object.keys(links) : [],
-      unresolvedLinks !== undefined ? Object.keys(unresolvedLinks) : []
-    ]
+
+    if (resolvedlinks !== undefined) {
+      links = links.concat(Object.keys(resolvedlinks).map((path) => {
+        return {
+          isResolved: true,
+          path: path,
+          text: this.pathToLinkText(path)
+        }}
+      ))
+    }
+    if (unresolvedLinks !== undefined) {
+      links = links.concat(Object.keys(unresolvedLinks).map((text) => {
+        return {
+          isResolved: false,
+          text: text,
+        }}
+      ))
+    }
+    return links
   }
 }

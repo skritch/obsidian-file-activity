@@ -1,4 +1,4 @@
-import { countlinksByDate, IndexEntry, getDisplayLinks, DEFAULT_DATA} from "../src/data"
+import { countlinksByDate, ReverseIndexEntry, getDisplayLinks, DEFAULT_DATA, FileActivityPluginData} from "../src/data"
 
 
 describe("Display functions", () => {
@@ -8,8 +8,9 @@ describe("Display functions", () => {
   // Note: test will fail on a day boundary!
   describe("countlinksByDate", () => {
     test("Counts properly", () => {
-      let entry: IndexEntry = {
-        name: "test",
+      let entry: ReverseIndexEntry = {
+        text: "test",
+        isResolved: true,
         linksBySource: {
           "a": now,
           "b": now - msPerDay,
@@ -24,20 +25,23 @@ describe("Display functions", () => {
 
   describe("getDisplayLinks", () => {
     test("Downweights links from older days", () => {
-      let initialdata = {
+      let initialdata: FileActivityPluginData = {
         ...DEFAULT_DATA(), 
         modTimes: {"source.md": now},
-        linkIndex: {
+        reverseIndex: {
           "today.md": {
-            name: "today",
+            text: "today",
+            isResolved: true,
             linksBySource: {"source.md": now}
           },
           "today2.md": {
-            name: "today2",
+            text: "today2",
+            isResolved: true,
             linksBySource: {"source.md": now, "source2.md": now}
           },
           "yesterday.md": {
-            name: "yesterday",
+            text: "yesterday",
+            isResolved: true,
             linksBySource: {"source3.md": now - msPerDay}
           }
         }
@@ -50,22 +54,23 @@ describe("Display functions", () => {
 
 
     test("Merges resolved and unresolved links", () => {
-      let initialdata = {
+      let initialdata: FileActivityPluginData = {
         ...DEFAULT_DATA(), 
         modTimes: {"source.md": now},
-        linkIndex: {
+        reverseIndex: {
           "resolvedToday.md": {
-            name: "resolvedToday",
+            text: "resolvedToday",
+            isResolved: true,
             linksBySource: {"source.md": now, source2: now}
           },
           "resolvedYesterday.md": {
-            name: "resolvedYesterday",
+            text: "resolvedYesterday",
+            isResolved: true,
             linksBySource: {"source2.md": now - msPerDay}
-          }
-        },
-        unresolvedLinkIndex: {
+          },
           "unresolvedToday": {
-            name: "unresolvedToday",
+            text: "unresolvedToday",
+            isResolved: false,
             linksBySource: {"source.md": now}
           }
         }
@@ -77,33 +82,38 @@ describe("Display functions", () => {
     });
 
     test("Honors configuration", () => {
-      let initialdata = {
+      let initialdata: FileActivityPluginData = {
         ...DEFAULT_DATA(),
-        activityTTLDays: 3,
+        activityTTLdays: 3,
         maxLength: 2,
         disallowedPaths: ["^disallow/"],
-        linkIndex: {
+        reverseIndex: {
           "today.md": {
-            name: "today",
+            text: "today",
+            isResolved: true,
             linksBySource: {"source.md": now,}
           },
-          "yesterday.md": {
-            name: "yesterday",
+          "yesterday": {
+            text: "yesterday",
+            isResolved: false,
             linksBySource: {"source2.md": now-msPerDay}
           },
           // Omitted by maxLength
           "twoDaysAgo.md": {
-            name: "twoDaysAgo",
+            text: "twoDaysAgo",
+            isResolved: true,
             linksBySource: {"source.md": now - 2 * msPerDay}
           },
           // Would be first but omitted by TTL
           "earlier.md": {
-            name: "yesterday",
+            text: "yesterday",
+            isResolved: true,
             linksBySource: {"1.md": now - 10 * msPerDay, "2.md": now - 10 * msPerDay, "3.md": now - 10 * msPerDay}
           },
           // Directory is ignored
           "disallow/nope.md": {
-            name: "nope",
+            text: "nope",
+            isResolved: true,
             linksBySource: {"source.md": now, "source2.md": now}
           },
         }

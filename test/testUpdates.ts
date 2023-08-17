@@ -1,4 +1,4 @@
-import { DEFAULT_DATA, FileActivityPluginData, remove, rename, update } from "../src/data"
+import { DEFAULT_DATA, FileActivityPluginData, Link, remove, rename, update } from "../src/data"
 
 
 describe("File Activity Plugin", () => {
@@ -8,9 +8,10 @@ describe("File Activity Plugin", () => {
     return {
       ...DEFAULT_DATA(), 
       modTimes: {"source.md": TIME_T},
-      linkIndex: {
+      reverseIndex: {
         "target.md": {
-          name: "target",
+          isResolved: true,
+          text: "target",
           linksBySource: {"source.md": TIME_T}
         }
       }
@@ -22,32 +23,36 @@ describe("File Activity Plugin", () => {
     test("Handles adding links a file", () => {
       let data = {
         ...initialData(),
-        unresolvedLinkIndex: {
+        reverseIndex: {
+          ...initialData().reverseIndex,
           "unresolved": {
-            name: "unresolved",
+            text: "unresolved",
+            isResolved: false,
             linksBySource: {"source.md": TIME_T}
           },
         }
       }
       const finalData: FileActivityPluginData = {
         ...initialData(),
-        linkIndex: {
+        reverseIndex: {
           "target.md": {
-            name: "target",
+            text: "target",
+            isResolved: true,
             linksBySource: {"otherSource.md": TIME_T + 1, "source.md": TIME_T}
           },
           "otherTarget.md": {
-            name: "otherTarget",
+            text: "otherTarget",
+            isResolved: true,
             linksBySource: {"otherSource.md": TIME_T + 1}
-          }
-        },
-        unresolvedLinkIndex: {
+          },
           "unresolved": {
-            name: "unresolved",
+            text: "unresolved",
+            isResolved: false,
             linksBySource: {"otherSource.md": TIME_T + 1, "source.md": TIME_T}
           },
           "anotherUnresolved": {
-            name: "anotherUnresolved",
+            text: "anotherUnresolved",
+            isResolved: false,
             linksBySource: {"otherSource.md": TIME_T + 1}
           }
         },
@@ -55,31 +60,39 @@ describe("File Activity Plugin", () => {
       };
   
       // Sequence fired when adding a link to a file
-      update("otherSource.md", TIME_T + 1, ["target.md", "otherTarget.md"], ["unresolved", "anotherUnresolved"], data);
+      let newLinks: Link[] = [
+        {path: "target.md", text: "target", isResolved: true},
+        {path: "otherTarget.md", text: "otherTarget", isResolved: true},
+        {text: "unresolved", isResolved: false},
+        {text: "anotherUnresolved", isResolved: false}
+      ]
+      update("otherSource.md", TIME_T + 1, newLinks, data);
       
       expect(data).toEqual(finalData);
     });
   
     test("Handles removing links from a file", () => {
-      let data = {
+      let data: FileActivityPluginData = {
         ...initialData(),
-        linkIndex: {
+        reverseIndex: {
           "target.md": {
-            name: "target",
+            text: "target",
+            isResolved: true,
             linksBySource: {"source.md": TIME_T}
           },
           "otherTarget.md": {
-            name: "otherTarget",
+            text: "otherTarget",
+            isResolved: true,
             linksBySource: {"source.md": TIME_T}
-          }
-        },
-        unresolvedLinkIndex: {
+          },
           "unresolved": {
-            name: "unresolved",
+            text: "unresolved",
+            isResolved: false,
             linksBySource: {"source.md": TIME_T}
           },
           "anotherUnresolved": {
-            name: "anotherUnresolved",
+            text: "anotherUnresolved",
+            isResolved: false,
             linksBySource: {"source.md": TIME_T}
           }
         }
@@ -87,15 +100,15 @@ describe("File Activity Plugin", () => {
       const finalData: FileActivityPluginData = {
         ...initialData(),
         
-        linkIndex: {
+        reverseIndex: {
           "target.md": {
-            name: "target",
+            text: "target",
+            isResolved: true,
             linksBySource: {"source.md": TIME_T + 1}
-          }
-        },
-        unresolvedLinkIndex: {
+          },
           "unresolved": {
-            name: "unresolved",
+            text: "unresolved",
+            isResolved: false,
             linksBySource: {"source.md": TIME_T + 1}
           }
         },
@@ -103,37 +116,46 @@ describe("File Activity Plugin", () => {
       };
   
       // Sequence fired when adding a link to a file and then removing it
-      update("source.md", TIME_T + 1, ["target.md"], ["unresolved"], data);
+      let newLinks: Link[] = [
+        {path: "target.md", text: "target", isResolved: true},
+        {text: "unresolved", isResolved: false}
+      ]
+      update("source.md", TIME_T + 1, newLinks, data);
       
       expect(data).toEqual(finalData);
     });
   
     test("Handles removing the last link to a file", () => {
-      let data = {
+      let data: FileActivityPluginData = {
         ...initialData(),
-        unresolvedLinkIndex: {
+        reverseIndex: {
+          ...initialData().reverseIndex,
           "unresolved": {
-            name: "unresolved",
+            text: "unresolved",
+            isResolved: false,
             linksBySource: {"source.md": TIME_T}
           }
         }
       }
       const finalData: FileActivityPluginData = {
         ...initialData(),
-        linkIndex: {},
-        unresolvedLinkIndex: {},
+        reverseIndex: {},
         modTimes: {"source.md": TIME_T + 1}
       };
   
       // Sequence fired when adding a link to a file and then removing it
-      update("source.md", TIME_T + 1, [], [], data);
+      update("source.md", TIME_T + 1, [], data);
       
       expect(data).toEqual(finalData);
     });
 
     test("Ignores out-of-order events", () => {
       let data = initialData()
-      update("source.md", TIME_T - 1 , ['other.md'], ['another'], data);
+      let newLinks: Link[] = [
+        {path: "other.md", text: "other", isResolved: true},
+        {text: "unresolved", isResolved: false},
+      ]
+      update("source.md", TIME_T - 1 , newLinks, data);
       
       expect(data).toEqual(initialData());
     })
@@ -144,35 +166,36 @@ describe("File Activity Plugin", () => {
     test("Handles renaming a file with both incoming and outgoing links", () => {
       let data: FileActivityPluginData = {
         ...initialData(),
-        linkIndex: {
-          ...initialData().linkIndex,
+        reverseIndex: {
+          ...initialData().reverseIndex,
           "other.md": {
-            name: "other",
+            text: "other",
+            isResolved: true,
             linksBySource: {"target.md": TIME_T}
-          }
-        },
-        unresolvedLinkIndex: {
-          "other": {
-            name: "other",
+          },
+          "unresolved": {
+            text: "unresolved",
+            isResolved: false,
             linksBySource: {"target.md": TIME_T}
           }
         }
       }
       const finalData: FileActivityPluginData = {
         ...initialData(),
-        linkIndex: {
+        reverseIndex: {
           "newTarget.md": {
-            name: "newTarget",
+            text: "newTarget",
+            isResolved: true,
             linksBySource: {"source.md": TIME_T + 3}
           },
           "other.md": {
-            name: "other",
+            text: "other",
+            isResolved: true,
             linksBySource: {"newTarget.md": TIME_T + 1}
-          }
-        },
-        unresolvedLinkIndex: {
-          "other": {
-            name: "other",
+          },
+          "unresolved": {
+            text: "unresolved",
+            isResolved: false,
             linksBySource: {"newTarget.md": TIME_T + 1}
           }
         },
@@ -180,10 +203,18 @@ describe("File Activity Plugin", () => {
       };
   
       // Obsidian removes the old link, then renames, then adds the new link.
-      update("source.md", TIME_T + 2, [], [], data);
+      update("source.md", TIME_T + 2, [], data);
       // Note earlier time--seems to happen in a weird order, but shouldn't make a difference.
-      rename("newTarget.md", "target.md", TIME_T + 1, ["other.md"], ["other"], data); 
-      update("source.md", TIME_T + 3, ["newTarget.md"], [], data);
+      let renameLinks: Link[] = [
+        {path: "other.md", text: "other", isResolved: true},
+        {text: "unresolved", isResolved: false},
+      ]
+      rename("newTarget.md", "target.md", TIME_T + 1, renameLinks, data); 
+
+      let updateLinks: Link[] = [
+        {path: "newTarget.md", text: "newTarget", isResolved: true},
+      ]
+      update("source.md", TIME_T + 3, updateLinks, data);
       
       expect(data).toEqual(finalData);
     });
@@ -191,23 +222,26 @@ describe("File Activity Plugin", () => {
     test("Handles moving a file without changing its name", () => {
       let data: FileActivityPluginData = {
         ...initialData(),
-        linkIndex: {
-          ...initialData()['linkIndex'],
+        reverseIndex: {
+          ...initialData().reverseIndex,
           "other.md": {
-            name: "other",
+            text: "other",
+            isResolved: true,
             linksBySource: {"target.md": TIME_T}
           }
         }
       }
       const finalData: FileActivityPluginData = {
         ...initialData(),
-        linkIndex: {
+        reverseIndex: {
           "dir/target.md": {
-            name: "target",
+            text: "target",
+            isResolved: true,
             linksBySource: {"source.md": TIME_T + 2}
           },
           "other.md": {
-            name: "other",
+            text: "other",
+            isResolved: true,
             linksBySource: {"dir/target.md": TIME_T + 1}
           }
         },
@@ -215,8 +249,16 @@ describe("File Activity Plugin", () => {
       };
   
       // Resolve for inbound links fires first.
-      update("source.md", TIME_T + 2, ["dir/target.md"], [], data);
-      rename("dir/target.md", "target.md", TIME_T + 1, ["other.md"], [], data);
+
+      let updateLinks: Link[] = [
+        {path: "dir/target.md", text: "target", isResolved: true},
+      ]
+      update("source.md", TIME_T + 2, updateLinks, data);
+
+      let renameLinks: Link[] = [
+        {path: "other.md", text: "other", isResolved: true},
+      ]
+      rename("dir/target.md", "target.md", TIME_T + 1, renameLinks, data);
       
       expect(data).toEqual(finalData);
 
@@ -228,16 +270,16 @@ describe("File Activity Plugin", () => {
     test("Handles deleting a file with incoming and outgoing links", () => {
       let data: FileActivityPluginData = {
         ...initialData(),
-        linkIndex: {
-          ...initialData().linkIndex,
+        reverseIndex: {
+          ...initialData().reverseIndex,
           "other.md": {
-            name: "other",
+            text: "other",
+            isResolved: true,
             linksBySource: {"source.md": TIME_T, "target.md": TIME_T}
-          }
-        },
-        unresolvedLinkIndex: {
+          },
           "other": {
-            name: "other",
+            text: "other",
+            isResolved: false,
             linksBySource: {"target.md": TIME_T}
           }
         },
@@ -245,15 +287,15 @@ describe("File Activity Plugin", () => {
       }
       const finalData: FileActivityPluginData = {
         ...initialData(),
-        linkIndex: {
+        reverseIndex: {
           "other.md": {
-            name: "other",
+            text: "other",
+            isResolved: true,
             linksBySource: {"source.md": TIME_T + 1}
-          }
-        },
-        unresolvedLinkIndex: {
+          },
           "target": {
-            name: "target",
+            text: "target",
+            isResolved: false,
             linksBySource: {"source.md": TIME_T + 1}
           }
         },
@@ -262,7 +304,12 @@ describe("File Activity Plugin", () => {
   
       // Obsidian deletes the file, and fires separate events to unresolve incoming links.
       remove("target.md", data)
-      update("source.md", TIME_T + 1, ["other.md"], ["target"], data);
+
+      let newLinks: Link[] = [
+        {path: "other.md", text: "other", isResolved: true},
+        {text: "target", isResolved: false},
+      ]
+      update("source.md", TIME_T + 1, newLinks, data);
       
       expect(data).toEqual(finalData);
     });
