@@ -23,6 +23,8 @@ export interface IndexEntry {
  */
 export interface FileActivityPluginData {
   // Reverse index of paths -> paths which link to them
+  // The path in the entry is redundant with the key, but 
+  // it's useful for both of these to use the same entry structure.
   linkIndex: Record<PathStr, IndexEntry>;
 
   // Reverse index of unresolved link text -> paths which link to it 
@@ -82,7 +84,7 @@ export function update(
     data.modTimes[sourcePath] = modTime
   }
   // TODO: handle our disallow list
-
+  // TODO: if not two-sided, we could just update in the same pass as removing dead
   updateLinkIndex(sourcePath, modTime, links, data.linkIndex);
   removeDeadLinks(sourcePath, links, data.linkIndex);
   updateLinkIndex(sourcePath, modTime, unresolvedLinks, data.unresolvedLinkIndex);
@@ -177,7 +179,7 @@ function pathToLinkText(path: PathStr): LinkText {
 
 
 /**
- * Generates the entries displayed in the plugin. The top `maxLength` entries
+ * Generates the list of links displayed in the plugin. The top `maxLength` entries
  * are chosen based on the exponentially-weighted sum of the count of links
  * per day.
  * 
@@ -187,10 +189,15 @@ function pathToLinkText(path: PathStr): LinkText {
  * - cache the DisplayEntries unless they've changed, or the day has turned
  * - but do this in a way that won't write to storage...?  
  */
-export function getWeightedTopLinks(
+export function getDisplayLinks(
   data: FileActivityPluginData
 ): Array<DisplayEntry> {
+  let disallowPatterns = data.disallowedPaths
+    .filter((path) => path.length > 0)
+    .map((pattern) => new RegExp(pattern))
+
   let linkCounts: Array<DisplayEntry> = Object.entries(data.linkIndex)
+    .filter(([path, _]) => !isDisallowed(path, disallowPatterns))
     .map(([path, entry]: [PathStr, IndexEntry]) => {
       let counts = countlinksByDate(entry, data.activityTTLdays)
       return {
@@ -252,4 +259,8 @@ function weightLinksByDay(counts: LinksByDay, falloff: number): number {
   return counts.reduce((acc: number, cur: number, i: number) => {
     return acc + cur * Math.exp(-1 * i / falloff)
   }, 0)
+}
+
+function isDisallowed(path: string, patterns: Array<RegExp>): boolean {
+  return patterns.some((r) => r.test(path))
 }

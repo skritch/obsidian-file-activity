@@ -115,17 +115,6 @@ export default class FileActivityPlugin extends Plugin {
    * - Occasionally at other times, it appears.
    */
   private readonly handleResolve = async (file: TFile): Promise<void> => {
-    if (!this.isMarkdown(file.path)) return;
-
-    // const logStats = {
-    //   path: file.path,
-    //   mtime: file.stat.mtime,
-    //   newLinks: this.getLinksForPath(file.path),
-    //   links: this.data.linkIndex[file.path],
-    //   unresolvedLinks: this.data.unresolvedLinkIndex[file.path]
-    // }
-    // console.log(PLUGIN_NAME + ': handleResolve: ' + JSON.stringify(logStats))
-
     let [links, unresolvedLinks] = this.getLinksForPath(file.path)
     update(
       file.path,
@@ -142,27 +131,16 @@ export default class FileActivityPlugin extends Plugin {
    * We save and update view here to avoid duplicate work when 
    * there are a lot of changes, particularly at app startup.
    */
-  private readonly handleResolved = async (): Promise<void> => {
+  private handleResolved = async (): Promise<void> => {
     this.saveData()
     this.view.redraw()
   }
   
-  private readonly handleRename = async (
+  private handleRename = async (
     file: TAbstractFile,
     oldPath: string,
   ): Promise<void> => {
-    if (!this.isMarkdown(file.path) || !this.isMarkdown(oldPath)) return;
-
-    let modTime = (await app.vault.adapter.stat(file.path))?.mtime    
-    // const logStats = {
-    //   path: file.path,
-    //   oldPath: oldPath,
-    //   mtime: modTime,
-    //   newLinks: this.getLinksForPath(file.path),
-    //   links: this.data.linkIndex[file.path],
-    //   unresolvedLinks: this.data.unresolvedLinkIndex[file.path]
-    // }
-    // console.log(PLUGIN_NAME + ': handleRename: ' + JSON.stringify(logStats))
+    let modTime = (await app.vault.adapter.stat(file.path))?.mtime
 
     if (modTime === undefined) {
       return
@@ -182,18 +160,9 @@ export default class FileActivityPlugin extends Plugin {
     this.view.redraw()
   };
             
-  private readonly handleDelete = async (
+  private handleDelete = async (
     file: TAbstractFile,
   ): Promise<void> => {
-    if (!this.isMarkdown(file.path)) return;
-
-    // const logStats = {
-    //   path: file.path,
-    //   newLinks: this.getLinksForPath(file.path),
-    //   links: this.data.linkIndex[file.path],
-    //   unresolvedLinks: this.data.unresolvedLinkIndex[file.path]
-    // }
-    // console.log(PLUGIN_NAME + ': handleDelete: ' + JSON.stringify(logStats))
     remove(file.path, this.data)
     await this.saveData();
     this.view.redraw();
@@ -202,7 +171,7 @@ export default class FileActivityPlugin extends Plugin {
   /**
    * Returns [[resolved links], [unresolved links]]
    */
-  private readonly getLinksForPath = (path: PathStr) => {
+  private getLinksForPath = (path: PathStr) => {
     let links = app.metadataCache.resolvedLinks[path];
     let unresolvedLinks = app.metadataCache.unresolvedLinks[path]
     return [
@@ -210,38 +179,4 @@ export default class FileActivityPlugin extends Plugin {
       unresolvedLinks !== undefined ? Object.keys(unresolvedLinks) : []
     ]
   }
-
-  readonly isMarkdown = (path: string): boolean => {
-    return path.endsWith(".md")
-  }
-              
-  
-  // TODO where is this called?
-  // readonly removeFile = async (file: FileActivity): Promise<void> => {
-  //   this.data.fileActivity = this.data.fileActivity.filter(
-  //     (currFile) => currFile.path !== file.path,
-  //     );
-  //     await this.pruneLength();
-  //     await this.saveData();
-  // }
-  
-  // public readonly pruneOmittedFiles = async (): Promise<void> => {
-  // let regexps = this.data.omittedPaths
-  // .filter((path) => path.length > 0)
-  // .map((pattern) => new RegExp(pattern))
-  //   this.data.fileActivity = this.data.fileActivity.filter(
-  //     (file) => !regexps.some((r) => r.test(file.path))
-  //   );
-  // };
-
-  // public readonly pruneLength = async (): Promise<void> => {
-  //   const toRemove =
-  //   this.data.fileActivity.length - (this.data.maxLength || DEFAULT_DATA.maxLength);
-  //   if (toRemove > 0) {
-  //     this.data.fileActivity.splice(
-  //       this.data.fileActivity.length - toRemove,
-  //       toRemove,
-  //       );
-  //     }
-  // };
 }

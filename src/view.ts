@@ -1,6 +1,6 @@
 
 import { ItemView, Menu, Notice, TFile, WorkspaceLeaf } from 'obsidian';
-import { DisplayEntry, getWeightedTopLinks } from "./data";
+import { DisplayEntry, getDisplayLinks } from "./data";
 import FileActivityPlugin, { VIEW_TYPE } from './main';
 
 
@@ -38,7 +38,7 @@ export default class FileActivityListView extends ItemView {
     const rootEl = createDiv({ cls: 'nav-folder mod-root' });
     const childrenEl = rootEl.createDiv({ cls: 'nav-folder-children' });
 
-    let topLinks: Array<DisplayEntry> = getWeightedTopLinks(this.plugin.data)
+    let topLinks: Array<DisplayEntry> = getDisplayLinks(this.plugin.data)
 
     Object.values(topLinks).forEach((entry) => {
       const navFile = childrenEl.createDiv({ cls: 'nav-file file-activity-file' });
