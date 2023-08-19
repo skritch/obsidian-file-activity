@@ -114,6 +114,9 @@ export default class FileActivityPlugin extends Plugin {
    * - Occasionally at other times, it appears.
    */
   private readonly handleResolve = async (file: TFile): Promise<void> => {
+    // TODO: if daily notes plugin, parse date from the path instead of using modtime.
+    // Same for frontmatter?
+    // If not that, use create time globally, or just for daily notes
     update(
       file.path,
       file.stat.mtime,
@@ -164,7 +167,8 @@ export default class FileActivityPlugin extends Plugin {
   };
 
 
-  // TODO can we use Obsidian's own function for this? MetadataCache.fileToLinktext?
+  // TODO: can we use Obsidian's own function for this? MetadataCache.fileToLinktext?
+  // TODO: cache Regex at least
   pathToLinkText = (path: PathStr): LinkText => {
     return path.replace(/^.*\//, '').replace(/\.[^/.]+$/, '')
   }

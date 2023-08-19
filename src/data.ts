@@ -26,13 +26,16 @@ export interface ReverseIndexEntry {
  * Full state of the plugin
  */
 export interface FileActivityPluginData {
+  // Can I just access the backlink plugin itself instead of doing all this work?
+  // Since reverseIndex and modTimes are determined completely at startup, we don't
+  // actually need to save their state at all..
   reverseIndex: Record<LinkKey, ReverseIndexEntry>,
   // Path -> last seen modification time
   modTimes: Record<PathStr, DateNumber>,
 
   // Settings
-  activityTTLdays: number, // Maybe we ignore links in files older than this many days?
-  weightFalloff: number,  // Number greater than zero. Higher = more recent links go to the top of the list.
+  activityDays: number,
+  weightFalloff: number,  // Float, greater than zero. Near zero = more recent links go to the top of the list.
   maxLength: number,
   disallowedPaths: string[],
   openType: string
@@ -51,8 +54,8 @@ export const DEFAULT_DATA = ():  FileActivityPluginData => {
   return {
     reverseIndex: {},
     modTimes: {},
-    activityTTLdays: 31,
-    weightFalloff: 7,
+    activityDays: 31,
+    weightFalloff: 0.25,
     disallowedPaths: [],
     maxLength: 50,
     openType: 'tab'
@@ -163,19 +166,25 @@ export function getDisplayLinks(data: FileActivityPluginData): Array<DisplayEntr
 
   let linkCounts: Array<DisplayEntry> = Object
     .entries(data.reverseIndex)
-    .filter(([key, entry]) => !entry.isResolved || !isDisallowed(key, disallowPatterns))
-    .map(([key, entry]: [LinkKey, ReverseIndexEntry]) => {
-      let counts = countlinksByDate(entry, data.activityTTLdays)
-      var displayName = entry.text
-      var path: PathStr | undefined = (entry.isResolved) ? key : undefined
+      // If resolved, must not be disallowed
+    .filter(([key, entry]) => 
+        // If resolved, must not be disallowed
+        !entry.isResolved || !isDisallowed(key, disallowPatterns)
+      )
+    .flatMap(([key, entry]: [LinkKey, ReverseIndexEntry]) => {
+      // Counts are reversed here; the first entry is today
+      let counts = countlinksByDate(entry, data.activityDays)
+      let total = counts.reduce((acc, cur) => acc + cur, 0)
+      // No recent entries
+      if (total == 0) { return []; }
 
-      return {
-        name: displayName,
+      return [{
+        name: entry.text,
         counts: counts,
-        total: counts.reduce((acc, cur) => acc + cur, 0),
-        weight: weightLinksByDay(counts, data.weightFalloff),
-        path: path
-      }
+        total: total,
+        weight: weightLinksByDay(counts, data.weightFalloff * data.activityDays),
+        path: (entry.isResolved) ? key : undefined
+      }]
     });
 
   let topN = linkCounts
@@ -187,7 +196,7 @@ export function getDisplayLinks(data: FileActivityPluginData): Array<DisplayEntr
 
 /**
  * Return an array of length `max_days` representing the number of links
- * on each day: [today, yesterday, t-2, ..., t - (max_days - 1) ]
+ * on each day: [t - (max_days - 1), ..., t-2, yesterday, today ]
  */
 export function countlinksByDate(links: ReverseIndexEntry, maxDays: number): LinksByDay {
   let today = new Date().setHours(0, 0, 0, 0)
@@ -198,24 +207,23 @@ export function countlinksByDate(links: ReverseIndexEntry, maxDays: number): Lin
     .reduce((acc: LinksByDay, cur: DateNumber) => {
         let diffDays = Math.floor((today - (new Date(cur)).setHours(0, 0, 0, 0)) / msPerDay)
         if (diffDays < 0) {
-          acc[0] = acc[0] + 1
+          acc[maxDays - 1] = acc[maxDays - 1] + 1
         } else if (diffDays < maxDays) {
-          acc[diffDays] = acc[diffDays] + 1
+          acc[maxDays - diffDays - 1] = acc[maxDays - diffDays - 1] + 1
         }
         return acc
       }, 
       init
-  )
+    )
 }
 
 /**
  * Returns sum_n c_n * exp(-n / falloff)), where c_n = the count of links created n days ago.
- * 
- * This is the numerator of an exponential-weighted-average.
  */
 function weightLinksByDay(counts: LinksByDay, falloff: number): number {
   return counts.reduce((acc: number, cur: number, i: number) => {
-    return acc + cur * Math.exp(-1 * i / falloff)
+    let n = counts.length - i - 1
+    return acc + cur * Math.exp(-1 * n / falloff)
   }, 0)
 }
 

@@ -66,6 +66,55 @@ export default class FileActivitySettingTab extends PluginSettingTab {
         this.plugin.view.redraw();
       };
     });
+
+
+    new Setting(containerEl)
+    .setName('Activity Days')
+    .setDesc('Number of days of activity to use in ranking and visualizing')
+    .addText((text) => {
+      text.inputEl.setAttr('type', 'number');
+      text.inputEl.setAttr('placeholder', DEFAULT_DATA().activityDays);
+      text
+      .setValue(this.plugin.data.activityDays?.toString())
+      .onChange((value) => {
+        const parsed = parseInt(value, 10);
+        if (!Number.isNaN(parsed) && parsed <= 0) {
+          new Notice('Number of days must be a positive integer');
+          return;
+        }
+      });
+      text.inputEl.onblur = (e: FocusEvent) => {
+        const days = (e.target as HTMLInputElement).value;
+        const parsed = parseInt(days, 10);
+        this.plugin.data.activityDays = parsed;
+        this.plugin.saveData();
+        this.plugin.view.redraw();
+      };
+    });
+
+    new Setting(containerEl)
+    .setName('Downranking Factor')
+    .setDesc('Factor by which older links are downweighted. Small numbers (much less than 1) will bias towards very recent activity.')
+    .addText((text) => {
+      text.inputEl.setAttr('type', 'number');
+      text.inputEl.setAttr('placeholder', DEFAULT_DATA().weightFalloff);
+      text
+      .setValue(this.plugin.data.weightFalloff?.toString())
+      .onChange((value) => {
+        const parsed = parseFloat(value);
+        if (!Number.isNaN(parsed) && parsed <= 0) {
+          new Notice('Number of days must be a positive integer');
+          return;
+        }
+      });
+      text.inputEl.onblur = (e: FocusEvent) => {
+        const falloff = (e.target as HTMLInputElement).value;
+        const parsed = parseFloat(falloff);
+        this.plugin.data.weightFalloff = parsed;
+        this.plugin.saveData();
+        this.plugin.view.redraw();
+      };
+    });
     
     new Setting(containerEl)
     .setName("Open note in")

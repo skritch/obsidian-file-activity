@@ -2,6 +2,7 @@
 import { ItemView, Menu, Notice, TFile, WorkspaceLeaf } from 'obsidian';
 import { DisplayEntry, getDisplayLinks } from "./data";
 import FileActivityPlugin, { VIEW_TYPE } from './main';
+import { getSparklineAsInlineStyle } from './sparkline';
 
 
 export default class FileActivityListView extends ItemView {
@@ -39,13 +40,27 @@ export default class FileActivityListView extends ItemView {
     const childrenEl = rootEl.createDiv({ cls: 'nav-folder-children' });
 
     let topLinks: Array<DisplayEntry> = getDisplayLinks(this.plugin.data)
+    let scale = 3 // Math.max(...topLinks.map((x) => {return Math.max(...x.counts)}))
 
     Object.values(topLinks).forEach((entry) => {
       const navFile = childrenEl.createDiv({ cls: 'nav-file file-activity-file' });
       const navFileTitle = navFile.createDiv({ cls: 'nav-file-title file-activity-title' })
       const navFileTitleContent = navFileTitle.createDiv({ cls: 'nav-file-title-content file-activity-title-content' })
 
-      navFileTitleContent.setText('(' + entry.total + ' [' + Math.floor(entry.weight) + ']) ' + entry.name)
+      // let debug = entry.counts.reduce((acc, cur) => {
+      //   return acc + "," + (cur > 0 ? cur : "")
+      // }, "")
+      navFileTitleContent.setText(entry.name)
+      
+      if (entry.path === undefined) {
+        // TODO: clicking should link to a search window
+        navFileTitleContent.addClass('file-activity-unresolved');
+      }
+
+      navFileTitle.createDiv({
+        cls: 'file-activity-graph',
+        attr: {'style': getSparklineAsInlineStyle(entry.counts, scale)}
+      })
 
       if (openFile && entry.path === openFile.path) {
         navFileTitle.addClass('is-active');
