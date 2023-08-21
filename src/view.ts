@@ -39,8 +39,8 @@ export default class FileActivityListView extends ItemView {
     const rootEl = createDiv({ cls: 'nav-folder mod-root' });
     const childrenEl = rootEl.createDiv({ cls: 'nav-folder-children' });
 
-    let topLinks: Array<DisplayEntry> = getDisplayLinks(this.plugin.data)
-    let scale = 3 // Math.max(...topLinks.map((x) => {return Math.max(...x.counts)}))
+    const topLinks: Array<DisplayEntry> = getDisplayLinks(this.plugin.data)
+    const scale = 3 // Math.max(...topLinks.map((x) => {return Math.max(...x.counts)}))
 
     Object.values(topLinks).forEach((entry) => {
       const navFile = childrenEl.createDiv({ cls: 'nav-file file-activity-file' });
@@ -70,7 +70,7 @@ export default class FileActivityListView extends ItemView {
       
       // If it's a file rather than an unresolved link, make it a link.
       if (entry.path !== undefined) {
-        let path = entry.path;
+        const path = entry.path;
         navFileTitle.addEventListener('dragstart', (event: DragEvent) => {
           const file = this.app.metadataCache.getFirstLinkpathDest(
             path,
@@ -137,9 +137,9 @@ export default class FileActivityListView extends ItemView {
       let leaf: WorkspaceLeaf | null = this.app.workspace.getMostRecentLeaf();
 
       if (shouldSplit || leaf === null || leaf.getViewState().pinned) {
-        if (this.plugin.data.openType == 'split')
+        if (this.plugin.data.config.openType == 'split')
           leaf = this.app.workspace.getLeaf('split');
-        else if (this.plugin.data.openType == 'window')
+        else if (this.plugin.data.config.openType == 'window')
           leaf = this.app.workspace.getLeaf('window');
         else
           leaf = this.app.workspace.getLeaf('tab');

@@ -1,0 +1,24 @@
+name: CI
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+jobs:
+  test-and-lint:
+    runs-on: ubuntu-latest
+    steps:
+      # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
+      - uses: actions/checkout@v2
+
+      - name: Install modules
+        run: npm install 
+
+      - name: Run build
+        run: npm run build
+  
+      - name: Run tests
+        run: npm run test
+
+      - name: Run ESLint
+        run: npm run lint

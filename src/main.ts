@@ -1,6 +1,6 @@
 
 import { Plugin, TAbstractFile, TFile, WorkspaceLeaf } from 'obsidian';
-import { DEFAULT_DATA, remove, FileActivityPluginData, PathStr, rename, update, Link, LinkText, ResolvedLink } from './data';
+import { DEFAULT_DATA, remove, PathStr, rename, update, Link, LinkText, PluginData } from './data';
 import FileActivitySettingTab from './settings';
 import FileActivityListView from './view';
 
@@ -8,7 +8,7 @@ const PLUGIN_NAME = 'File Activity Plugin';
 export const VIEW_TYPE = 'file-activity';
 
 export default class FileActivityPlugin extends Plugin {
-  public data: FileActivityPluginData;
+  public data: PluginData;
   public view: FileActivityListView;
   
   // Runs on app start and plugin load
@@ -25,7 +25,7 @@ export default class FileActivityPlugin extends Plugin {
       if (this.app.workspace.layoutReady) {
         this.initView();
       } else {
-        this.registerEvent(this.app.workspace.on('layout-ready' as any, this.initView)); // tslint:disable-line
+        this.registerEvent(this.app.workspace.on('layout-ready' as any, this.initView));
       }
       this.addCommand({
         id: 'file-activity-open',
@@ -51,11 +51,14 @@ export default class FileActivityPlugin extends Plugin {
   }
   
   public async loadData(): Promise<void> {
-    this.data = Object.assign(DEFAULT_DATA(), await super.loadData());
+    const data = DEFAULT_DATA();
+    data.config = Object.assign(data.config, await super.loadData())
+    this.data = data;
   }
   
   public async saveData(): Promise<void> {
-    await super.saveData(this.data);
+    // Only save the config; regenerate the state at startup.
+    await super.saveData(this.data.config);
   }
   
   private readonly initView = async (): Promise<void> => {
@@ -85,17 +88,17 @@ export default class FileActivityPlugin extends Plugin {
   }
 
   private indexAll = async (): Promise<void> => {
-    let mdFiles = app.vault.getMarkdownFiles()
+    const mdFiles = app.vault.getMarkdownFiles()
     console.log(PLUGIN_NAME + ': Indexing ' + mdFiles.length + ' files.')
     mdFiles.forEach((file) => {
-      let links = this.getLinksForPath(file.path)
+      const links = this.getLinksForPath(file.path)
       // For a bulk index, skip anything that doesn't have links.
       if (links.length > 0) {
         update(
           file.path,
           file.stat.mtime,
           links,
-          this.data
+          this.data.state
         )
       }
     })
@@ -121,7 +124,7 @@ export default class FileActivityPlugin extends Plugin {
       file.path,
       file.stat.mtime,
       this.getLinksForPath(file.path),
-      this.data
+      this.data.state
     )
   }
 
@@ -140,7 +143,7 @@ export default class FileActivityPlugin extends Plugin {
     file: TAbstractFile,
     oldPath: string,
   ): Promise<void> => {
-    let modTime = (await app.vault.adapter.stat(file.path))?.mtime
+    const modTime = (await app.vault.adapter.stat(file.path))?.mtime
 
     if (modTime === undefined) {
       return
@@ -151,7 +154,7 @@ export default class FileActivityPlugin extends Plugin {
       oldPath,
       modTime,
       this.getLinksForPath(file.path),
-      this.data
+      this.data.state
     )
 
     await this.saveData();
@@ -161,7 +164,7 @@ export default class FileActivityPlugin extends Plugin {
   private handleDelete = async (
     file: TAbstractFile,
   ): Promise<void> => {
-    remove(file.path, this.data)
+    remove(file.path, this.data.state)
     await this.saveData();
     this.view.redraw();
   };
@@ -178,8 +181,8 @@ export default class FileActivityPlugin extends Plugin {
    */
   private getLinksForPath = (path: PathStr): Array<Link> => {
     let links: Array<Link> = []
-    let resolvedlinks = app.metadataCache.resolvedLinks[path];
-    let unresolvedLinks = app.metadataCache.unresolvedLinks[path]
+    const resolvedlinks = app.metadataCache.resolvedLinks[path];
+    const unresolvedLinks = app.metadataCache.unresolvedLinks[path]
 
     if (resolvedlinks !== undefined) {
       links = links.concat(Object.keys(resolvedlinks).map((path) => {

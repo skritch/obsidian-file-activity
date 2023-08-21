@@ -33,10 +33,10 @@ export default class FileActivitySettingTab extends PluginSettingTab {
       textArea.inputEl.setAttr('rows', 6);
       textArea
       .setPlaceholder('^journal/\nfoobar.*')
-      .setValue(this.plugin.data.disallowedPaths.join('\n'));
+      .setValue(this.plugin.data.config.disallowedPaths.join('\n'));
       textArea.inputEl.onblur = (e: FocusEvent) => {
         const patterns = (e.target as HTMLInputElement).value;
-        this.plugin.data.disallowedPaths = patterns.split('\n');
+        this.plugin.data.config.disallowedPaths = patterns.split('\n');
         this.plugin.saveData()
         this.plugin.view.redraw();
       };
@@ -47,9 +47,9 @@ export default class FileActivitySettingTab extends PluginSettingTab {
     .setDesc('Maximum number of files to track.')
     .addText((text) => {
       text.inputEl.setAttr('type', 'number');
-      text.inputEl.setAttr('placeholder', DEFAULT_DATA().maxLength);
+      text.inputEl.setAttr('placeholder', DEFAULT_DATA().config.maxLength);
       text
-      .setValue(this.plugin.data.maxLength?.toString())
+      .setValue(this.plugin.data.config.maxLength?.toString())
       .onChange((value) => {
         const parsed = parseInt(value, 10);
         if (!Number.isNaN(parsed) && parsed <= 0) {
@@ -60,7 +60,7 @@ export default class FileActivitySettingTab extends PluginSettingTab {
       text.inputEl.onblur = (e: FocusEvent) => {
         const maxfiles = (e.target as HTMLInputElement).value;
         const parsed = parseInt(maxfiles, 10);
-        this.plugin.data.maxLength = parsed;
+        this.plugin.data.config.maxLength = parsed;
         // this.plugin.pruneLength();
         this.plugin.saveData();
         this.plugin.view.redraw();
@@ -73,9 +73,9 @@ export default class FileActivitySettingTab extends PluginSettingTab {
     .setDesc('Number of days of activity to use in ranking and visualizing')
     .addText((text) => {
       text.inputEl.setAttr('type', 'number');
-      text.inputEl.setAttr('placeholder', DEFAULT_DATA().activityDays);
+      text.inputEl.setAttr('placeholder', DEFAULT_DATA().config.activityDays);
       text
-      .setValue(this.plugin.data.activityDays?.toString())
+      .setValue(this.plugin.data.config.activityDays?.toString())
       .onChange((value) => {
         const parsed = parseInt(value, 10);
         if (!Number.isNaN(parsed) && parsed <= 0) {
@@ -86,7 +86,7 @@ export default class FileActivitySettingTab extends PluginSettingTab {
       text.inputEl.onblur = (e: FocusEvent) => {
         const days = (e.target as HTMLInputElement).value;
         const parsed = parseInt(days, 10);
-        this.plugin.data.activityDays = parsed;
+        this.plugin.data.config.activityDays = parsed;
         this.plugin.saveData();
         this.plugin.view.redraw();
       };
@@ -97,9 +97,9 @@ export default class FileActivitySettingTab extends PluginSettingTab {
     .setDesc('Factor by which older links are downweighted. Small numbers (much less than 1) will bias towards very recent activity.')
     .addText((text) => {
       text.inputEl.setAttr('type', 'number');
-      text.inputEl.setAttr('placeholder', DEFAULT_DATA().weightFalloff);
+      text.inputEl.setAttr('placeholder', DEFAULT_DATA().config.weightFalloff);
       text
-      .setValue(this.plugin.data.weightFalloff?.toString())
+      .setValue(this.plugin.data.config.weightFalloff?.toString())
       .onChange((value) => {
         const parsed = parseFloat(value);
         if (!Number.isNaN(parsed) && parsed <= 0) {
@@ -110,7 +110,7 @@ export default class FileActivitySettingTab extends PluginSettingTab {
       text.inputEl.onblur = (e: FocusEvent) => {
         const falloff = (e.target as HTMLInputElement).value;
         const parsed = parseFloat(falloff);
-        this.plugin.data.weightFalloff = parsed;
+        this.plugin.data.config.weightFalloff = parsed;
         this.plugin.saveData();
         this.plugin.view.redraw();
       };
@@ -128,9 +128,9 @@ export default class FileActivitySettingTab extends PluginSettingTab {
       
       dropdown
       .addOptions(options)
-      .setValue(this.plugin.data.openType)
+      .setValue(this.plugin.data.config.openType)
       .onChange(async (value) => {
-        this.plugin.data.openType = value;
+        this.plugin.data.config.openType = value;
         await this.plugin.saveData();
         this.display();
       });

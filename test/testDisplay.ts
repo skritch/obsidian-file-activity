@@ -1,14 +1,14 @@
-import { countlinksByDate, ReverseIndexEntry, getDisplayLinks, DEFAULT_DATA, FileActivityPluginData} from "../src/data"
+import { countlinksByDate, ReverseIndexEntry, getDisplayLinks, DEFAULT_DATA, PluginState} from "../src/data"
 
 
 describe("Display functions", () => {
-  let now = Date.now()
-  let msPerDay = 1000 * 60 * 60 * 24
+  const now = Date.now()
+  const msPerDay = 1000 * 60 * 60 * 24
 
   // Note: test will fail on a day boundary!
   describe("countlinksByDate", () => {
     test("Counts properly", () => {
-      let entry: ReverseIndexEntry = {
+      const entry: ReverseIndexEntry = {
         text: "test",
         isResolved: true,
         linksBySource: {
@@ -18,15 +18,14 @@ describe("Display functions", () => {
           "d": now - msPerDay * 3
         }
       };
-      let result = countlinksByDate(entry, 5);
-      expect(result).toEqual([1, 1, 0, 2, 0])
+      const result = countlinksByDate(entry, 5);
+      expect(result).toEqual([0, 2, 0, 1, 1])
     });
   });
 
   describe("getDisplayLinks", () => {
     test("Downweights links from older days", () => {
-      let initialdata: FileActivityPluginData = {
-        ...DEFAULT_DATA(), 
+      const initialState: PluginState = {
         modTimes: {"source.md": now},
         reverseIndex: {
           "today.md": {
@@ -47,15 +46,14 @@ describe("Display functions", () => {
         }
       };
 
-      let result = getDisplayLinks(initialdata);
-      let names = result.map((entry) => entry.name);
+      const result = getDisplayLinks({state: initialState, config: DEFAULT_DATA().config});
+      const names = result.map((entry) => entry.name);
       expect(names).toEqual(["today2", "today", "yesterday"]);
     })
 
 
     test("Merges resolved and unresolved links", () => {
-      let initialdata: FileActivityPluginData = {
-        ...DEFAULT_DATA(), 
+      const initialState: PluginState = {
         modTimes: {"source.md": now},
         reverseIndex: {
           "resolvedToday.md": {
@@ -76,17 +74,14 @@ describe("Display functions", () => {
         }
       };
 
-      let result = getDisplayLinks(initialdata);
-      let names = result.map((entry) => entry.name);
+      const result = getDisplayLinks({state: initialState, config: DEFAULT_DATA().config});
+      const names = result.map((entry) => entry.name);
       expect(names).toEqual(["resolvedToday", "unresolvedToday", "resolvedYesterday"]);
     });
 
     test("Honors configuration", () => {
-      let initialdata: FileActivityPluginData = {
-        ...DEFAULT_DATA(),
-        activityTTLdays: 3,
-        maxLength: 2,
-        disallowedPaths: ["^disallow/"],
+      const initialState: PluginState = {
+        modTimes: {},
         reverseIndex: {
           "today.md": {
             text: "today",
@@ -119,8 +114,15 @@ describe("Display functions", () => {
         }
       };
 
-      let result = getDisplayLinks(initialdata);
-      let names = result.map((entry) => entry.name);
+      const config = {
+        ...DEFAULT_DATA().config,
+        activityTTLdays: 3,
+        maxLength: 2,
+        disallowedPaths: ["^disallow/"],
+      }
+
+      const result = getDisplayLinks({state: initialState, config: config});
+      const names = result.map((entry) => entry.name);
       expect(names).toEqual(["today", "yesterday"]);
     })
   })

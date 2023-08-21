@@ -1,12 +1,11 @@
-import { DEFAULT_DATA, FileActivityPluginData, Link, remove, rename, update } from "../src/data"
+import { PluginState, Link, remove, rename, update } from "../src/data"
 
 
 describe("File Activity Plugin", () => {
   const TIME_T = 1692055220000
   
-  const initialData = (): FileActivityPluginData => {
+  const initialData = (): PluginState => {
     return {
-      ...DEFAULT_DATA(), 
       modTimes: {"source.md": TIME_T},
       reverseIndex: {
         "target.md": {
@@ -21,7 +20,7 @@ describe("File Activity Plugin", () => {
 
   describe("update", () => {
     test("Handles adding links a file", () => {
-      let data = {
+      const data = {
         ...initialData(),
         reverseIndex: {
           ...initialData().reverseIndex,
@@ -32,7 +31,7 @@ describe("File Activity Plugin", () => {
           },
         }
       }
-      const finalData: FileActivityPluginData = {
+      const finalData: PluginState = {
         ...initialData(),
         reverseIndex: {
           "target.md": {
@@ -60,7 +59,7 @@ describe("File Activity Plugin", () => {
       };
   
       // Sequence fired when adding a link to a file
-      let newLinks: Link[] = [
+      const newLinks: Link[] = [
         {path: "target.md", text: "target", isResolved: true},
         {path: "otherTarget.md", text: "otherTarget", isResolved: true},
         {text: "unresolved", isResolved: false},
@@ -72,7 +71,7 @@ describe("File Activity Plugin", () => {
     });
   
     test("Handles removing links from a file", () => {
-      let data: FileActivityPluginData = {
+      const data: PluginState = {
         ...initialData(),
         reverseIndex: {
           "target.md": {
@@ -97,7 +96,7 @@ describe("File Activity Plugin", () => {
           }
         }
       }
-      const finalData: FileActivityPluginData = {
+      const finalData: PluginState = {
         ...initialData(),
         
         reverseIndex: {
@@ -116,7 +115,7 @@ describe("File Activity Plugin", () => {
       };
   
       // Sequence fired when adding a link to a file and then removing it
-      let newLinks: Link[] = [
+      const newLinks: Link[] = [
         {path: "target.md", text: "target", isResolved: true},
         {text: "unresolved", isResolved: false}
       ]
@@ -126,7 +125,7 @@ describe("File Activity Plugin", () => {
     });
   
     test("Handles removing the last link to a file", () => {
-      let data: FileActivityPluginData = {
+      const data: PluginState = {
         ...initialData(),
         reverseIndex: {
           ...initialData().reverseIndex,
@@ -137,7 +136,7 @@ describe("File Activity Plugin", () => {
           }
         }
       }
-      const finalData: FileActivityPluginData = {
+      const finalData: PluginState = {
         ...initialData(),
         reverseIndex: {},
         modTimes: {"source.md": TIME_T + 1}
@@ -150,8 +149,8 @@ describe("File Activity Plugin", () => {
     });
 
     test("Ignores out-of-order events", () => {
-      let data = initialData()
-      let newLinks: Link[] = [
+      const data = initialData()
+      const newLinks: Link[] = [
         {path: "other.md", text: "other", isResolved: true},
         {text: "unresolved", isResolved: false},
       ]
@@ -164,7 +163,7 @@ describe("File Activity Plugin", () => {
 
   describe("rename", () => {
     test("Handles renaming a file with both incoming and outgoing links", () => {
-      let data: FileActivityPluginData = {
+      const data: PluginState = {
         ...initialData(),
         reverseIndex: {
           ...initialData().reverseIndex,
@@ -180,7 +179,7 @@ describe("File Activity Plugin", () => {
           }
         }
       }
-      const finalData: FileActivityPluginData = {
+      const finalData: PluginState = {
         ...initialData(),
         reverseIndex: {
           "newTarget.md": {
@@ -205,13 +204,13 @@ describe("File Activity Plugin", () => {
       // Obsidian removes the old link, then renames, then adds the new link.
       update("source.md", TIME_T + 2, [], data);
       // Note earlier time--seems to happen in a weird order, but shouldn't make a difference.
-      let renameLinks: Link[] = [
+      const renameLinks: Link[] = [
         {path: "other.md", text: "other", isResolved: true},
         {text: "unresolved", isResolved: false},
       ]
       rename("newTarget.md", "target.md", TIME_T + 1, renameLinks, data); 
 
-      let updateLinks: Link[] = [
+      const updateLinks: Link[] = [
         {path: "newTarget.md", text: "newTarget", isResolved: true},
       ]
       update("source.md", TIME_T + 3, updateLinks, data);
@@ -220,7 +219,7 @@ describe("File Activity Plugin", () => {
     });
 
     test("Handles moving a file without changing its name", () => {
-      let data: FileActivityPluginData = {
+      const data: PluginState = {
         ...initialData(),
         reverseIndex: {
           ...initialData().reverseIndex,
@@ -231,7 +230,7 @@ describe("File Activity Plugin", () => {
           }
         }
       }
-      const finalData: FileActivityPluginData = {
+      const finalData: PluginState = {
         ...initialData(),
         reverseIndex: {
           "dir/target.md": {
@@ -250,12 +249,12 @@ describe("File Activity Plugin", () => {
   
       // Resolve for inbound links fires first.
 
-      let updateLinks: Link[] = [
+      const updateLinks: Link[] = [
         {path: "dir/target.md", text: "target", isResolved: true},
       ]
       update("source.md", TIME_T + 2, updateLinks, data);
 
-      let renameLinks: Link[] = [
+      const renameLinks: Link[] = [
         {path: "other.md", text: "other", isResolved: true},
       ]
       rename("dir/target.md", "target.md", TIME_T + 1, renameLinks, data);
@@ -268,7 +267,7 @@ describe("File Activity Plugin", () => {
   
   describe("delete", () => {
     test("Handles deleting a file with incoming and outgoing links", () => {
-      let data: FileActivityPluginData = {
+      const data: PluginState = {
         ...initialData(),
         reverseIndex: {
           ...initialData().reverseIndex,
@@ -285,7 +284,7 @@ describe("File Activity Plugin", () => {
         },
         modTimes: {"source.md": TIME_T, "target.md": TIME_T}
       }
-      const finalData: FileActivityPluginData = {
+      const finalData: PluginState = {
         ...initialData(),
         reverseIndex: {
           "other.md": {
@@ -305,7 +304,7 @@ describe("File Activity Plugin", () => {
       // Obsidian deletes the file, and fires separate events to unresolve incoming links.
       remove("target.md", data)
 
-      let newLinks: Link[] = [
+      const newLinks: Link[] = [
         {path: "other.md", text: "other", isResolved: true},
         {text: "target", isResolved: false},
       ]

@@ -22,17 +22,16 @@ export interface ReverseIndexEntry {
   linksBySource: Record<PathStr, DateNumber>,
 }
 
-/**
- * Full state of the plugin
- */
-export interface FileActivityPluginData {
-  // Can I just access the backlink plugin itself instead of doing all this work?
-  // Since reverseIndex and modTimes are determined completely at startup, we don't
-  // actually need to save their state at all..
+// State of the plugin, which is generated at app start but not persisted.
+export interface PluginState {
+  // Reverse index of path/link text => everything that links to it.
   reverseIndex: Record<LinkKey, ReverseIndexEntry>,
   // Path -> last seen modification time
-  modTimes: Record<PathStr, DateNumber>,
+  modTimes: Record<PathStr, DateNumber>
+}
 
+// State of the plugin, which is generated at app start but not persisted.
+export interface PluginConfig {
   // Settings
   activityDays: number,
   weightFalloff: number,  // Float, greater than zero. Near zero = more recent links go to the top of the list.
@@ -40,6 +39,12 @@ export interface FileActivityPluginData {
   disallowedPaths: string[],
   openType: string
 }
+
+export interface PluginData {
+  state: PluginState,
+  config: PluginConfig
+}
+
 
 export interface DisplayEntry {
   name: LinkText,
@@ -50,15 +55,19 @@ export interface DisplayEntry {
 }
 
 // A function returning the default data (safer since we mutate)
-export const DEFAULT_DATA = ():  FileActivityPluginData => { 
+export const DEFAULT_DATA = ():  PluginData => { 
   return {
-    reverseIndex: {},
-    modTimes: {},
-    activityDays: 31,
-    weightFalloff: 0.25,
-    disallowedPaths: [],
-    maxLength: 50,
-    openType: 'tab'
+    state: {
+      reverseIndex: {},
+      modTimes: {}
+    },
+    config: {
+      activityDays: 31,
+      weightFalloff: 0.25,
+      disallowedPaths: [],
+      maxLength: 50,
+      openType: 'tab'
+    }
   }
 };
 
@@ -69,7 +78,7 @@ export function update(
   sourcePath: PathStr, 
   modTime: DateNumber,
   links: Array<Link>,
-  data: FileActivityPluginData
+  data: PluginState
 ) {
   // No-op if we've seen a newer resolve event for this file.
   if (data.modTimes[sourcePath] >= modTime) {
@@ -80,7 +89,7 @@ export function update(
   
   // Update reverse index to reflect new links
   links.forEach((link) => {
-    let key = keyForLink(link)
+    const key = keyForLink(link)
     if (data.reverseIndex[key] === undefined) {
       data.reverseIndex[key] = {
         text: link.isResolved ? link.text : link.text,
@@ -114,7 +123,7 @@ function removeDeadLinks(
         if (Object.keys(targetLinks.linksBySource).length == 0) {
           delete index[key]
         }
-      };
+      }
     });
 }
 
@@ -127,7 +136,7 @@ export function rename(
   oldPath: PathStr,
   modTime: DateNumber,
   newLinks: Array<Link>,
-  data: FileActivityPluginData
+  data: PluginState
 ) {
   remove(oldPath, data)
   update(path, modTime, newLinks, data)
@@ -138,7 +147,7 @@ export function rename(
  */
 export function remove(
   path: PathStr, 
-  data: FileActivityPluginData
+  data: PluginState
 ) {
   delete data.reverseIndex[path]
   delete data.modTimes[path]
@@ -159,13 +168,13 @@ export function remove(
  * - cache the DisplayEntries unless they've changed, or the day has turned
  * - but do this in a way that won't write to storage...?  
  */
-export function getDisplayLinks(data: FileActivityPluginData): Array<DisplayEntry> {
-  let disallowPatterns = data.disallowedPaths
+export function getDisplayLinks(data: PluginData): Array<DisplayEntry> {
+  const disallowPatterns = data.config.disallowedPaths
     .filter((path) => path.length > 0)
     .map((pattern) => new RegExp(pattern))
 
-  let linkCounts: Array<DisplayEntry> = Object
-    .entries(data.reverseIndex)
+  const linkCounts: Array<DisplayEntry> = Object
+    .entries(data.state.reverseIndex)
       // If resolved, must not be disallowed
     .filter(([key, entry]) => 
         // If resolved, must not be disallowed
@@ -173,8 +182,8 @@ export function getDisplayLinks(data: FileActivityPluginData): Array<DisplayEntr
       )
     .flatMap(([key, entry]: [LinkKey, ReverseIndexEntry]) => {
       // Counts are reversed here; the first entry is today
-      let counts = countlinksByDate(entry, data.activityDays)
-      let total = counts.reduce((acc, cur) => acc + cur, 0)
+      const counts = countlinksByDate(entry, data.config.activityDays)
+      const total = counts.reduce((acc, cur) => acc + cur, 0)
       // No recent entries
       if (total == 0) { return []; }
 
@@ -182,14 +191,14 @@ export function getDisplayLinks(data: FileActivityPluginData): Array<DisplayEntr
         name: entry.text,
         counts: counts,
         total: total,
-        weight: weightLinksByDay(counts, data.weightFalloff * data.activityDays),
+        weight: weightLinksByDay(counts, data.config.weightFalloff * data.config.activityDays),
         path: (entry.isResolved) ? key : undefined
       }]
     });
 
-  let topN = linkCounts
+  const topN = linkCounts
     .sort(((e1, e2) => e2.weight - e1.weight))  // Sort by weight descending
-    .slice(0, data.maxLength)
+    .slice(0,data.config.maxLength)
 
   return topN
 }
@@ -199,13 +208,13 @@ export function getDisplayLinks(data: FileActivityPluginData): Array<DisplayEntr
  * on each day: [t - (max_days - 1), ..., t-2, yesterday, today ]
  */
 export function countlinksByDate(links: ReverseIndexEntry, maxDays: number): LinksByDay {
-  let today = new Date().setHours(0, 0, 0, 0)
-  let msPerDay = 1000 * 60 * 60 * 24
-  let init: LinksByDay = new Array<number>(maxDays).fill(0)
+  const today = new Date().setHours(0, 0, 0, 0)
+  const msPerDay = 1000 * 60 * 60 * 24
+  const init: LinksByDay = new Array<number>(maxDays).fill(0)
   return Object
     .values(links.linksBySource)
     .reduce((acc: LinksByDay, cur: DateNumber) => {
-        let diffDays = Math.floor((today - (new Date(cur)).setHours(0, 0, 0, 0)) / msPerDay)
+        const diffDays = Math.floor((today - (new Date(cur)).setHours(0, 0, 0, 0)) / msPerDay)
         if (diffDays < 0) {
           acc[maxDays - 1] = acc[maxDays - 1] + 1
         } else if (diffDays < maxDays) {
@@ -222,7 +231,7 @@ export function countlinksByDate(links: ReverseIndexEntry, maxDays: number): Lin
  */
 function weightLinksByDay(counts: LinksByDay, falloff: number): number {
   return counts.reduce((acc: number, cur: number, i: number) => {
-    let n = counts.length - i - 1
+    const n = counts.length - i - 1
     return acc + cur * Math.exp(-1 * n / falloff)
   }, 0)
 }
