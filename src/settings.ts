@@ -131,7 +131,7 @@ export default class FileActivitySettingTab extends PluginSettingTab {
       .setValue(this.plugin.data.config.openType)
       .onChange(async (value) => {
         this.plugin.data.config.openType = value;
-        await this.plugin.saveData();
+        this.plugin.saveData();
         this.display();
       });
     });

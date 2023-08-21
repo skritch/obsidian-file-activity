@@ -20,18 +20,24 @@ export const sparklinePath = (timeseries: Array<number>, scale: number) => {
 
 const svgToInlineStyle = (svg: string) => {
   const shortSvg = svg.replace(/\s+/g,' ')
-  // To set a theme-dependent color: -webkit-mask-image + background color?
-  // but this masks all the text...
   return `-webkit-mask-image:url("data:image/svg+xml,${shortSvg}");`
 }
 
+/**
+ * Generate a sparkline graph for the timeseries as a SVG applied as a 
+ * "mask" over a background color. This works around two limitations
+ * - can't create SVG elements directly
+ * - just using "backgruond-image" directly prevents us from styling the inline
+ *   SVG with CSS vars, but it works to use the SVG as a mask over a CSS-determined
+ *   background color.
+ */
 export const getSparklineAsInlineStyle = (timeseries: Array<number>, scale: number) => {
   const path = sparklinePath(timeseries, scale)
   const svg = `
   <svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 ${timeseries.length - 1} ${scale}' preserveAspectRatio='none'>
     <path
       d='${path}'
-      stroke-width='2'
+      stroke-width='1.5px'
       stroke='white'
       fill='transparent'
       vector-effect='non-scaling-stroke'

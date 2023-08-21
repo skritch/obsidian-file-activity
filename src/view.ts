@@ -47,14 +47,16 @@ export default class FileActivityListView extends ItemView {
       const navFileTitle = navFile.createDiv({ cls: 'nav-file-title file-activity-title' })
       const navFileTitleContent = navFileTitle.createDiv({ cls: 'nav-file-title-content file-activity-title-content' })
 
-      // let debug = entry.counts.reduce((acc, cur) => {
-      //   return acc + "," + (cur > 0 ? cur : "")
-      // }, "")
-      navFileTitleContent.setText(entry.name)
-      
       if (entry.path === undefined) {
-        // TODO: clicking should link to a search window
         navFileTitleContent.addClass('file-activity-unresolved');
+        // Clicking an unresolved entry will link into the search box if it's enabled
+        navFileTitleContent.createEl("a", {
+          href: `obsidian://search?vault=${this.app.vault.getName()}&query=${entry.name}`,
+          text: entry.name
+        })
+      } else {
+        
+        navFileTitleContent.setText(entry.name)
       }
 
       navFileTitle.createDiv({
@@ -109,13 +111,6 @@ export default class FileActivityListView extends ItemView {
           this.focusFile(path, event.ctrlKey || event.metaKey);
         });
       }
-
-      // const navFileDelete = navFileTitle.createDiv({ cls: 'file-activity-file-delete' })
-      // navFileDelete.appendChild(getIcon("x-circle") as SVGSVGElement);
-      // navFileDelete.addEventListener('click', async () => {
-      //   await this.plugin.removeFile(f);
-      //   this.redraw();
-      // })
     });
 
     const contentEl = this.containerEl.children[1];
@@ -147,7 +142,6 @@ export default class FileActivityListView extends ItemView {
       leaf.openFile(targetFile);
     } else {
       new Notice('Cannot find a file with that name');
-      // await this.plugin.removeFile(file); // needed?
       this.redraw();
     }
   };

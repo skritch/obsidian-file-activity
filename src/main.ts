@@ -172,6 +172,7 @@ export default class FileActivityPlugin extends Plugin {
 
   // TODO: can we use Obsidian's own function for this? MetadataCache.fileToLinktext?
   // TODO: cache Regex at least
+  // TODOL strip path#heading suffixes
   pathToLinkText = (path: PathStr): LinkText => {
     return path.replace(/^.*\//, '').replace(/\.[^/.]+$/, '')
   }

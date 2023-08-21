@@ -7,8 +7,9 @@
   width: 55%
 }
 
-.file-activity-unresolved {
+.file-activity-unresolved > a {
   color: var(--text-faint);
+  text-decoration: none;
 }
 
 .file-activity-graph {
