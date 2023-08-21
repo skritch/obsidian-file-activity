@@ -42,38 +42,23 @@ export default class FileActivityListView extends ItemView {
     const topLinks: Array<DisplayEntry> = getDisplayLinks(this.plugin.data)
     const scale = 3 // Math.max(...topLinks.map((x) => {return Math.max(...x.counts)}))
 
-    Object.values(topLinks).forEach((entry) => {
-      const navFile = childrenEl.createDiv({ cls: 'nav-file file-activity-file' });
-      const navFileTitle = navFile.createDiv({ cls: 'nav-file-title file-activity-title' })
-      const navFileTitleContent = navFileTitle.createDiv({ cls: 'nav-file-title-content file-activity-title-content' })
-
-      if (entry.path === undefined) {
-        navFileTitleContent.addClass('file-activity-unresolved');
-        // Clicking an unresolved entry will link into the search box if it's enabled
-        navFileTitleContent.createEl("a", {
-          href: `obsidian://search?vault=${this.app.vault.getName()}&query=${entry.name}`,
-          text: entry.name
-        })
-      } else {
-        
-        navFileTitleContent.setText(entry.name)
-      }
-
-      navFileTitle.createDiv({
+    Object.values(topLinks).forEach((entryData) => {
+      const entry = childrenEl.createDiv({ cls: 'nav-file file-activity-file' });
+      const entryContent = entry.createDiv({ cls: 'nav-file-title file-activity-title' })
+      const entryText = entryContent.createDiv({ cls: 'nav-file-title-content file-activity-title-content' })
+      entryText.setText(entryData.name)
+      entryContent.createDiv({
         cls: 'file-activity-graph',
-        attr: {'style': getSparklineAsInlineStyle(entry.counts, scale)}
+        attr: {'style': getSparklineAsInlineStyle(entryData.counts, scale)}
       })
 
-      if (openFile && entry.path === openFile.path) {
-        navFileTitle.addClass('is-active');
-      }
+      if (entryData.path !== undefined) {
+        const path = entryData.path as string;
+        entryContent.addEventListener('click', (event: MouseEvent) => {
+          this.focusFile(entryData.path as string, event.ctrlKey || event.metaKey);
+        });
 
-      navFileTitle.setAttr('draggable', 'true');
-      
-      // If it's a file rather than an unresolved link, make it a link.
-      if (entry.path !== undefined) {
-        const path = entry.path;
-        navFileTitle.addEventListener('dragstart', (event: DragEvent) => {
+        entryContent.addEventListener('dragstart', (event: DragEvent) => {
           const file = this.app.metadataCache.getFirstLinkpathDest(
             path,
             '',
@@ -85,17 +70,17 @@ export default class FileActivityListView extends ItemView {
           dragManager.onDragStart(event, dragData);
         });
 
-        navFileTitle.addEventListener('mouseover', (event: MouseEvent) => {
+        entryContent.addEventListener('mouseover', (event: MouseEvent) => {
           this.app.workspace.trigger('hover-link', {
             event,
             source: VIEW_TYPE,
             hoverParent: rootEl,
-            targetEl: navFile,
-            linktext: entry.path,
+            targetEl: entry,
+            linktext: entryData.path,
           });
         });
 
-        navFileTitle.addEventListener('contextmenu', (event: MouseEvent) => {
+        entryContent.addEventListener('contextmenu', (event: MouseEvent) => {
           const menu = new Menu();
           const file = this.app.vault.getAbstractFileByPath(path);
           this.app.workspace.trigger(
@@ -107,8 +92,17 @@ export default class FileActivityListView extends ItemView {
           menu.showAtPosition({ x: event.clientX, y: event.clientY });
         });
 
-        navFileTitleContent.addEventListener('click', (event: MouseEvent) => {
-          this.focusFile(path, event.ctrlKey || event.metaKey);
+        if (openFile && entryData.path === openFile.path) {
+          entryContent.addClass('is-active');
+        }
+
+        entryContent.setAttr('draggable', 'true');
+      
+      } else {
+        // Clicking an unresolved entry will link into the search box if it's enabled
+        entryText.addClass("file-activity-unresolved")
+        entryContent.addEventListener('click', (event: MouseEvent) => {
+          window.location.href = `obsidian://search?vault=${this.app.vault.getName()}&query=[[${entryData.name}]]`
         });
       }
     });

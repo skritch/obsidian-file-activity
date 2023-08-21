@@ -1,13 +1,14 @@
 .file-activity-title {
     display: flex;
     justify-content: space-between;
+    cursor: pointer;
   }
   
 .file-activity-title-content {
-  width: 55%
+  width: 55%;
 }
 
-.file-activity-unresolved > a {
+.file-activity-unresolved {
   color: var(--text-faint);
   text-decoration: none;
 }
