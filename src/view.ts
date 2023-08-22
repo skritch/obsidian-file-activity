@@ -40,7 +40,7 @@ export default class FileActivityListView extends ItemView {
     const childrenEl = rootEl.createDiv({ cls: 'nav-folder-children' });
 
     const topLinks: Array<DisplayEntry> = getDisplayLinks(this.plugin.data)
-    const scale = 3 // Math.max(...topLinks.map((x) => {return Math.max(...x.counts)}))
+    const max = 3 // Math.max(...topLinks.map((x) => {return Math.max(...x.counts)}))
 
     Object.values(topLinks).forEach((entryData) => {
       const entry = childrenEl.createDiv({ cls: 'nav-file file-activity-file' });
@@ -49,7 +49,7 @@ export default class FileActivityListView extends ItemView {
       entryText.setText(entryData.name)
       entryContent.createDiv({
         cls: 'file-activity-graph',
-        attr: {'style': getSparklineAsInlineStyle(entryData.counts, scale)}
+        attr: {'style': getSparklineAsInlineStyle(entryData.counts, max, 10)}
       })
 
       if (entryData.path !== undefined) {

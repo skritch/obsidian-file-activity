@@ -3,17 +3,16 @@
 
 /**
  * Generate an SVG sparkline from a timeseries of non-negative integers. The series
- * will be scaled such that `scale` = 100% height.
+ * will be flipped and scaled such that 0 => (ymax * scale), and `ymax` => 0.
  */
-export const sparklinePath = (timeseries: Array<number>, scale: number) => {
-  // Scale series, and flip Y axis since (0,0) is top left.
-  const adjusted = timeseries.map((x) => (scale - x/scale))
-  const initSVG = "M"
+export const sparklinePath = (timeseries: Array<number>, ymax: number, scale: number) => {
+  const adjusted = timeseries.map((y) => scale * (ymax - y/ymax))
+  const initSVG = "M "
   return adjusted.reduce((acc, cur, i) => {
     if (i > 0) { 
       acc = acc + "L "
     }
-    return acc + i + " " + cur.toFixed(1) + " "
+    return acc + scale * i + " " + cur.toFixed(1) + " "
   }, initSVG)
 };
 
@@ -30,17 +29,18 @@ const svgToInlineStyle = (svg: string) => {
  * - just using "backgruond-image" directly prevents us from styling the inline
  *   SVG with CSS vars, but it works to use the SVG as a mask over a CSS-determined
  *   background color.
+ * 
+ * `scale` sets the size of the whole SVG coordinate system, in case it causes issues.
  */
-export const getSparklineAsInlineStyle = (timeseries: Array<number>, scale: number) => {
-  const path = sparklinePath(timeseries, scale)
+export const getSparklineAsInlineStyle = (timeseries: Array<number>, ymax: number, scale: number) => {
+  const path = sparklinePath(timeseries, ymax, scale)
   const svg = `
-  <svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 ${timeseries.length - 1} ${scale}' preserveAspectRatio='none'>
+  <svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 ${scale * (timeseries.length - 1)} ${scale * (ymax + 1)}' preserveAspectRatio='none'>
     <path
       d='${path}'
-      stroke-width='1.5px'
+      stroke-width='2px'
       stroke='white'
       fill='transparent'
-      vector-effect='non-scaling-stroke'
     />
   </svg>
   `
