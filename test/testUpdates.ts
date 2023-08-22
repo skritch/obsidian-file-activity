@@ -6,7 +6,6 @@ describe("File Activity Plugin", () => {
   
   const initialData = (): PluginState => {
     return {
-      modTimes: {"source.md": TIME_T},
       reverseIndex: {
         "target.md": {
           isResolved: true,
@@ -54,8 +53,7 @@ describe("File Activity Plugin", () => {
             isResolved: false,
             linksBySource: {"otherSource.md": TIME_T + 1}
           }
-        },
-        modTimes: {"source.md": TIME_T, "otherSource.md": TIME_T + 1}
+        }
       };
   
       // Sequence fired when adding a link to a file
@@ -110,8 +108,7 @@ describe("File Activity Plugin", () => {
             isResolved: false,
             linksBySource: {"source.md": TIME_T + 1}
           }
-        },
-        modTimes: {"source.md": TIME_T + 1}
+        }
       };
   
       // Sequence fired when adding a link to a file and then removing it
@@ -138,8 +135,7 @@ describe("File Activity Plugin", () => {
       }
       const finalData: PluginState = {
         ...initialData(),
-        reverseIndex: {},
-        modTimes: {"source.md": TIME_T + 1}
+        reverseIndex: {}
       };
   
       // Sequence fired when adding a link to a file and then removing it
@@ -147,17 +143,6 @@ describe("File Activity Plugin", () => {
       
       expect(data).toEqual(finalData);
     });
-
-    test("Ignores out-of-order events", () => {
-      const data = initialData()
-      const newLinks: Link[] = [
-        {path: "other.md", text: "other", isResolved: true},
-        {text: "unresolved", isResolved: false},
-      ]
-      update("source.md", TIME_T - 1 , newLinks, data);
-      
-      expect(data).toEqual(initialData());
-    })
   })
 
 
@@ -197,8 +182,7 @@ describe("File Activity Plugin", () => {
             isResolved: false,
             linksBySource: {"newTarget.md": TIME_T + 1}
           }
-        },
-        modTimes: {"source.md": TIME_T + 3, "newTarget.md": TIME_T + 1}
+        }
       };
   
       // Obsidian removes the old link, then renames, then adds the new link.
@@ -243,12 +227,10 @@ describe("File Activity Plugin", () => {
             isResolved: true,
             linksBySource: {"dir/target.md": TIME_T + 1}
           }
-        },
-        modTimes: {"source.md": TIME_T + 2, "dir/target.md": TIME_T + 1}
+        }
       };
   
       // Resolve for inbound links fires first.
-
       const updateLinks: Link[] = [
         {path: "dir/target.md", text: "target", isResolved: true},
       ]
@@ -262,6 +244,7 @@ describe("File Activity Plugin", () => {
       expect(data).toEqual(finalData);
 
     });
+    
     // corner case? handle rename to same name as an existing file but at a new path
   })
   
@@ -281,8 +264,7 @@ describe("File Activity Plugin", () => {
             isResolved: false,
             linksBySource: {"target.md": TIME_T}
           }
-        },
-        modTimes: {"source.md": TIME_T, "target.md": TIME_T}
+        }
       }
       const finalData: PluginState = {
         ...initialData(),
@@ -297,8 +279,7 @@ describe("File Activity Plugin", () => {
             isResolved: false,
             linksBySource: {"source.md": TIME_T + 1}
           }
-        },
-        modTimes: {"source.md": TIME_T + 1}
+        }
       };
   
       // Obsidian deletes the file, and fires separate events to unresolve incoming links.

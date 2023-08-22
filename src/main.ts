@@ -96,7 +96,7 @@ export default class FileActivityPlugin extends Plugin {
       if (links.length > 0) {
         update(
           file.path,
-          file.stat.mtime,
+          file.stat.ctime,
           links,
           this.data.state
         )
@@ -117,12 +117,9 @@ export default class FileActivityPlugin extends Plugin {
    * - Occasionally at other times, it appears.
    */
   private readonly handleResolve = async (file: TFile): Promise<void> => {
-    // TODO: if daily notes plugin, parse date from the path instead of using modtime.
-    // Same for frontmatter?
-    // If not that, use create time globally, or just for daily notes
     update(
       file.path,
-      file.stat.mtime,
+      file.stat.ctime,
       this.getLinksForPath(file.path),
       this.data.state
     )
@@ -143,16 +140,16 @@ export default class FileActivityPlugin extends Plugin {
     file: TAbstractFile,
     oldPath: string,
   ): Promise<void> => {
-    const modTime = (await app.vault.adapter.stat(file.path))?.mtime
+    const stat = (await app.vault.adapter.stat(file.path))
 
-    if (modTime === undefined) {
+    if (stat?.mtime === undefined) {
       return
     }
 
     rename(
       file.path,
       oldPath,
-      modTime,
+      stat.ctime,
       this.getLinksForPath(file.path),
       this.data.state
     )

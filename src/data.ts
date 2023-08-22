@@ -19,15 +19,14 @@ const keyForLink = (link: Link): LinkKey => {return (link.isResolved) ? link.pat
 export interface ReverseIndexEntry {
   text: LinkText,
   isResolved: boolean,
+  // Path of file which links to this one => file created ts
   linksBySource: Record<PathStr, DateNumber>,
 }
 
 // State of the plugin, which is generated at app start but not persisted.
 export interface PluginState {
   // Reverse index of path/link text => everything that links to it.
-  reverseIndex: Record<LinkKey, ReverseIndexEntry>,
-  // Path -> last seen modification time
-  modTimes: Record<PathStr, DateNumber>
+  reverseIndex: Record<LinkKey, ReverseIndexEntry>
 }
 
 // State of the plugin, which is generated at app start but not persisted.
@@ -58,8 +57,7 @@ export interface DisplayEntry {
 export const DEFAULT_DATA = ():  PluginData => { 
   return {
     state: {
-      reverseIndex: {},
-      modTimes: {}
+      reverseIndex: {}
     },
     config: {
       activityDays: 31,
@@ -75,29 +73,23 @@ export const DEFAULT_DATA = ():  PluginData => {
  * Sync our state with a current list of links for a given source.
  */
 export function update(
-  sourcePath: PathStr, 
-  modTime: DateNumber,
+  sourcePath: PathStr,
+  createTime: DateNumber,
   links: Array<Link>,
   data: PluginState
 ) {
-  // No-op if we've seen a newer resolve event for this file.
-  if (data.modTimes[sourcePath] >= modTime) {
-    return
-  } else {
-    data.modTimes[sourcePath] = modTime
-  }
-  
   // Update reverse index to reflect new links
+  // Should we *count* the links?
   links.forEach((link) => {
     const key = keyForLink(link)
     if (data.reverseIndex[key] === undefined) {
       data.reverseIndex[key] = {
         text: link.isResolved ? link.text : link.text,
-        linksBySource: {[sourcePath]: modTime},
+        linksBySource: {[sourcePath]: createTime},
         isResolved: link.isResolved
       }
     } else {
-      data.reverseIndex[key].linksBySource[sourcePath] = modTime
+      data.reverseIndex[key].linksBySource[sourcePath] = createTime
     }
   })
 
@@ -134,12 +126,12 @@ function removeDeadLinks(
 export function rename(
   path: PathStr,
   oldPath: PathStr,
-  modTime: DateNumber,
+  createTime: DateNumber,
   newLinks: Array<Link>,
   data: PluginState
 ) {
   remove(oldPath, data)
-  update(path, modTime, newLinks, data)
+  update(path, createTime, newLinks, data)
 }
 
 /**
@@ -150,7 +142,6 @@ export function remove(
   data: PluginState
 ) {
   delete data.reverseIndex[path]
-  delete data.modTimes[path]
   removeDeadLinks(path, [], data.reverseIndex);
   // Obsidian will re-resolve any files which linked to this one, so we don't need to
   // handle converting them to unresolved links. So we don't have to do that.
@@ -175,7 +166,6 @@ export function getDisplayLinks(data: PluginData): Array<DisplayEntry> {
 
   const linkCounts: Array<DisplayEntry> = Object
     .entries(data.state.reverseIndex)
-      // If resolved, must not be disallowed
     .filter(([key, entry]) => 
         // If resolved, must not be disallowed
         !entry.isResolved || !isDisallowed(key, disallowPatterns)
@@ -198,7 +188,7 @@ export function getDisplayLinks(data: PluginData): Array<DisplayEntry> {
 
   const topN = linkCounts
     .sort(((e1, e2) => e2.weight - e1.weight))  // Sort by weight descending
-    .slice(0,data.config.maxLength)
+    .slice(0, data.config.maxLength)
 
   return topN
 }

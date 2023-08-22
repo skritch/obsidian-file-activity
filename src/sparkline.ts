@@ -34,8 +34,9 @@ const svgToInlineStyle = (svg: string) => {
  */
 export const getSparklineAsInlineStyle = (timeseries: Array<number>, ymax: number, scale: number) => {
   const path = sparklinePath(timeseries, ymax, scale)
+  const [x0, y0, dx, dy] = [0, 0, scale * (timeseries.length - 1), scale * ymax]
   const svg = `
-  <svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 ${scale * (timeseries.length - 1)} ${scale * (ymax + 1)}' preserveAspectRatio='none'>
+  <svg xmlns='http://www.w3.org/2000/svg' viewBox='${x0 - scale} ${y0 - scale} ${dx + scale * 2} ${dy + scale * 2}' preserveAspectRatio='none'>
     <path
       d='${path}'
       stroke-width='2px'

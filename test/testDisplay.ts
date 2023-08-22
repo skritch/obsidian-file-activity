@@ -26,7 +26,6 @@ describe("Display functions", () => {
   describe("getDisplayLinks", () => {
     test("Downweights links from older days", () => {
       const initialState: PluginState = {
-        modTimes: {"source.md": now},
         reverseIndex: {
           "today.md": {
             text: "today",
@@ -54,7 +53,6 @@ describe("Display functions", () => {
 
     test("Merges resolved and unresolved links", () => {
       const initialState: PluginState = {
-        modTimes: {"source.md": now},
         reverseIndex: {
           "resolvedToday.md": {
             text: "resolvedToday",
@@ -81,7 +79,6 @@ describe("Display functions", () => {
 
     test("Honors configuration", () => {
       const initialState: PluginState = {
-        modTimes: {},
         reverseIndex: {
           "today.md": {
             text: "today",
