@@ -53,7 +53,7 @@ export default class FileActivitySettingTab extends PluginSettingTab {
       .onChange((value) => {
         const parsed = parseInt(value, 10);
         if (!Number.isNaN(parsed) && parsed <= 0) {
-          new Notice('Number of files must be a positive integer');
+          new Notice('Must be a positive integer');
           return;
         }
       });
@@ -79,7 +79,7 @@ export default class FileActivitySettingTab extends PluginSettingTab {
       .onChange((value) => {
         const parsed = parseInt(value, 10);
         if (!Number.isNaN(parsed) && parsed <= 0) {
-          new Notice('Number of days must be a positive integer');
+          new Notice('Must be a positive integer');
           return;
         }
       });
@@ -103,7 +103,7 @@ export default class FileActivitySettingTab extends PluginSettingTab {
       .onChange((value) => {
         const parsed = parseFloat(value);
         if (!Number.isNaN(parsed) && parsed <= 0) {
-          new Notice('Number of days must be a positive integer');
+          new Notice('Must be a positive number');
           return;
         }
       });
