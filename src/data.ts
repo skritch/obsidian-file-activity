@@ -18,33 +18,24 @@ export type Link = ResolvedLink | UnresolvedLink
 const keyForLink = (link: Link): LinkKey => {return (link.isResolved) ? link.path : link.text};
 export interface ReverseIndexEntry {
   text: LinkText,
-  isResolved: boolean,
+  path: PathStr | undefined,  // undefined = unresolved link
   // Path of file which links to this one => file created ts
   linksBySource: Record<PathStr, DateNumber>,
 }
+// Reverse index of path/link text => everything that links to it.
+export type ReverseIndex = Record<LinkKey, ReverseIndexEntry>
 
-// State of the plugin, which is generated at app start but not persisted.
-export interface PluginState {
-  // Reverse index of path/link text => everything that links to it.
-  reverseIndex: Record<LinkKey, ReverseIndexEntry>
-}
-
-// State of the plugin, which is generated at app start but not persisted.
+// Only plugin configuration is saved to storage
 export interface PluginConfig {
   // Settings
   activityDays: number,
   weightFalloff: number,  // Float, greater than zero. Near zero = more recent links go to the top of the list.
   maxLength: number,
   disallowedPaths: string[],
-  openType: string
+  openType: "split" | "window" | "tab"
 }
 
-export interface PluginData {
-  state: PluginState,
-  config: PluginConfig
-}
-
-
+// Data for entries in the UI
 export interface DisplayEntry {
   name: LinkText,
   counts: LinksByDay,
@@ -53,22 +44,13 @@ export interface DisplayEntry {
   path?: PathStr
 }
 
-// A function returning the default data (safer since we mutate)
-export const DEFAULT_DATA = ():  PluginData => { 
-  return {
-    state: {
-      reverseIndex: {}
-    },
-    config: {
-      activityDays: 31,
-      weightFalloff: 0.25,
-      disallowedPaths: [],
-      maxLength: 50,
-      openType: 'tab'
-    }
-  }
+export const DEFAULT_CONFIG = {
+  activityDays: 31,
+  weightFalloff: 0.25,
+  disallowedPaths: [],
+  maxLength: 50,
+  openType: 'tab'
 };
-
 /**
  * Sync our state with a current list of links for a given source.
  */
@@ -76,24 +58,23 @@ export function update(
   sourcePath: PathStr,
   createTime: DateNumber,
   links: Array<Link>,
-  data: PluginState
+  index: ReverseIndex
 ) {
   // Update reverse index to reflect new links
-  // Should we *count* the links?
   links.forEach((link) => {
     const key = keyForLink(link)
-    if (data.reverseIndex[key] === undefined) {
-      data.reverseIndex[key] = {
-        text: link.isResolved ? link.text : link.text,
+    if (index[key] === undefined) {
+      index[key] = {
+        text: link.text,
         linksBySource: {[sourcePath]: createTime},
-        isResolved: link.isResolved
+        path: link.isResolved ? link.path : undefined
       }
     } else {
-      data.reverseIndex[key].linksBySource[sourcePath] = createTime
+      index[key].linksBySource[sourcePath] = createTime
     }
   })
-
-  removeDeadLinks(sourcePath, links.map(keyForLink), data.reverseIndex)
+  
+  removeDeadLinks(sourcePath, links.map(keyForLink), index)
 }
 
 /**
@@ -102,7 +83,7 @@ export function update(
 function removeDeadLinks(
   sourcePath: PathStr,
   links: Array<LinkKey>, 
-  index: Record<LinkKey, ReverseIndexEntry>
+  index: ReverseIndex
 ) {
   Object.entries(index)
     .forEach(([key, targetLinks]: [LinkKey, ReverseIndexEntry]) => {
@@ -128,10 +109,10 @@ export function rename(
   oldPath: PathStr,
   createTime: DateNumber,
   newLinks: Array<Link>,
-  data: PluginState
+  index: ReverseIndex
 ) {
-  remove(oldPath, data)
-  update(path, createTime, newLinks, data)
+  remove(oldPath, index)
+  update(path, createTime, newLinks, index)
 }
 
 /**
@@ -139,65 +120,40 @@ export function rename(
  */
 export function remove(
   path: PathStr, 
-  data: PluginState
+  index: ReverseIndex
 ) {
-  delete data.reverseIndex[path]
-  removeDeadLinks(path, [], data.reverseIndex);
   // Obsidian will re-resolve any files which linked to this one, so we don't need to
   // handle converting them to unresolved links. So we don't have to do that.
+  removeDeadLinks(path, [], index);
+  delete index[path]
 }
-
 
 /**
  * Generates the list of links displayed in the plugin. The top `maxLength` entries
  * are chosen based on the exponentially-weighted sum of the count of links
- * per day.
- * 
- * TODO: this going to get calculated for every link on every refresh.
- * Better to do some dirty flagging, or some reactive state library.
- * - skip the whole step if nothing has changed
- * - cache the DisplayEntries unless they've changed, or the day has turned
- * - but do this in a way that won't write to storage...?  
+ * per day. 
  */
-export function getDisplayLinks(data: PluginData): Array<DisplayEntry> {
-  const disallowPatterns = data.config.disallowedPaths
-    .filter((path) => path.length > 0)
-    .map((pattern) => new RegExp(pattern))
-
-  const linkCounts: Array<DisplayEntry> = Object
-    .entries(data.state.reverseIndex)
-    .filter(([key, entry]) => 
-        // If resolved, must not be disallowed
-        !entry.isResolved || !isDisallowed(key, disallowPatterns)
-      )
-    .flatMap(([key, entry]: [LinkKey, ReverseIndexEntry]) => {
-      // Counts are reversed here; the first entry is today
-      const counts = countlinksByDate(entry, data.config.activityDays)
-      const total = counts.reduce((acc, cur) => acc + cur, 0)
-      // No recent entries
-      if (total == 0) { return []; }
-
-      return [{
-        name: entry.text,
-        counts: counts,
-        total: total,
-        weight: weightLinksByDay(counts, data.config.weightFalloff * data.config.activityDays),
-        path: (entry.isResolved) ? key : undefined
-      }]
-    });
-
-  const topN = linkCounts
-    .sort(((e1, e2) => e2.weight - e1.weight))  // Sort by weight descending
-    .slice(0, data.config.maxLength)
-
-  return topN
+function getDisplayEntry(
+  entry: ReverseIndexEntry,
+  weightFalloff: number,
+  activityDays: number
+): DisplayEntry {
+  const counts = countlinksByDate(entry, activityDays)
+  const total = counts.reduce((acc, cur) => acc + cur, 0)
+  return {
+    name: entry.text,
+    counts: counts,
+    total: total,
+    weight: weightLinksByDay(counts, weightFalloff * activityDays),
+    path: entry.path
+  }
 }
 
 /**
  * Return an array of length `max_days` representing the number of links
  * on each day: [t - (max_days - 1), ..., t-2, yesterday, today ]
  */
-export function countlinksByDate(links: ReverseIndexEntry, maxDays: number): LinksByDay {
+function countlinksByDate(links: ReverseIndexEntry, maxDays: number): LinksByDay {
   const today = new Date().setHours(0, 0, 0, 0)
   const msPerDay = 1000 * 60 * 60 * 24
   const init: LinksByDay = new Array<number>(maxDays).fill(0)
@@ -226,6 +182,22 @@ function weightLinksByDay(counts: LinksByDay, falloff: number): number {
   }, 0)
 }
 
-function isDisallowed(path: string, patterns: Array<RegExp>): boolean {
-  return patterns.some((r) => r.test(path))
+function isDisallowed(entry: ReverseIndexEntry, disallowPatterns: RegExp[]) {
+  const path = entry.path
+  return (path !== undefined && disallowPatterns.some((r) => r.test(path)))
+}
+
+export function getAllDisplayEntries(
+  index: Record<LinkKey, ReverseIndexEntry>, 
+  config: PluginConfig, 
+  patterns: RegExp[]
+): Record<LinkKey, DisplayEntry> {
+  return Object.entries(index)
+    .reduce<Record<LinkKey, DisplayEntry>>((acc, [key, indexEntry]) => {
+      if (isDisallowed(indexEntry, patterns)) { 
+        return acc 
+      }
+      acc[key] = getDisplayEntry(indexEntry, config.weightFalloff, config.activityDays)
+      return acc
+    }, {})
 }

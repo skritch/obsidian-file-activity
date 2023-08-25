@@ -1,15 +1,18 @@
 
+import { Signal } from '@preact/signals';
 import { App, Notice, PluginSettingTab, Setting } from 'obsidian';
+import { DEFAULT_CONFIG, PluginConfig } from "./data";
 import FileActivityPlugin from './main';
-import { DEFAULT_DATA } from "./data";
 
 
 export default class FileActivitySettingTab extends PluginSettingTab {
   private readonly plugin: FileActivityPlugin;
+  private config: Signal<PluginConfig>
   
-  constructor(app: App, plugin: FileActivityPlugin) {
+  constructor(app: App, plugin: FileActivityPlugin, config: Signal<PluginConfig>) {
     super(app, plugin);
     this.plugin = plugin;
+    this.config = config
   }
   
   public display(): void {
@@ -33,12 +36,10 @@ export default class FileActivitySettingTab extends PluginSettingTab {
       textArea.inputEl.setAttr('rows', 6);
       textArea
       .setPlaceholder('^journal/\nfoobar.*')
-      .setValue(this.plugin.data.config.disallowedPaths.join('\n'));
+      .setValue(this.config.peek().disallowedPaths.join('\n'));
       textArea.inputEl.onblur = (e: FocusEvent) => {
         const patterns = (e.target as HTMLInputElement).value;
-        this.plugin.data.config.disallowedPaths = patterns.split('\n');
-        this.plugin.saveData()
-        this.plugin.view.redraw();
+        this.config.value = {...this.config.peek(), disallowedPaths: patterns.split('\n')};
       };
     });
     
@@ -47,9 +48,9 @@ export default class FileActivitySettingTab extends PluginSettingTab {
     .setDesc('Maximum number of files to track.')
     .addText((text) => {
       text.inputEl.setAttr('type', 'number');
-      text.inputEl.setAttr('placeholder', DEFAULT_DATA().config.maxLength);
+      text.inputEl.setAttr('placeholder', DEFAULT_CONFIG.maxLength);
       text
-      .setValue(this.plugin.data.config.maxLength?.toString())
+      .setValue(this.config.peek().maxLength?.toString())
       .onChange((value) => {
         const parsed = parseInt(value, 10);
         if (!Number.isNaN(parsed) && parsed <= 0) {
@@ -60,10 +61,7 @@ export default class FileActivitySettingTab extends PluginSettingTab {
       text.inputEl.onblur = (e: FocusEvent) => {
         const maxfiles = (e.target as HTMLInputElement).value;
         const parsed = parseInt(maxfiles, 10);
-        this.plugin.data.config.maxLength = parsed;
-        // this.plugin.pruneLength();
-        this.plugin.saveData();
-        this.plugin.view.redraw();
+        this.config.value = {...this.config.peek(), maxLength: parsed}
       };
     });
 
@@ -73,9 +71,9 @@ export default class FileActivitySettingTab extends PluginSettingTab {
     .setDesc('Number of days of activity to use in ranking and visualizing')
     .addText((text) => {
       text.inputEl.setAttr('type', 'number');
-      text.inputEl.setAttr('placeholder', DEFAULT_DATA().config.activityDays);
+      text.inputEl.setAttr('placeholder', DEFAULT_CONFIG.activityDays);
       text
-      .setValue(this.plugin.data.config.activityDays?.toString())
+      .setValue(this.config.peek().activityDays?.toString())
       .onChange((value) => {
         const parsed = parseInt(value, 10);
         if (!Number.isNaN(parsed) && parsed <= 0) {
@@ -86,9 +84,7 @@ export default class FileActivitySettingTab extends PluginSettingTab {
       text.inputEl.onblur = (e: FocusEvent) => {
         const days = (e.target as HTMLInputElement).value;
         const parsed = parseInt(days, 10);
-        this.plugin.data.config.activityDays = parsed;
-        this.plugin.saveData();
-        this.plugin.view.redraw();
+        this.config.value = {...this.config.peek(), activityDays: parsed}
       };
     });
 
@@ -97,9 +93,9 @@ export default class FileActivitySettingTab extends PluginSettingTab {
     .setDesc('Factor by which older links are downweighted. Small numbers (much less than 1) will bias towards very recent activity.')
     .addText((text) => {
       text.inputEl.setAttr('type', 'number');
-      text.inputEl.setAttr('placeholder', DEFAULT_DATA().config.weightFalloff);
+      text.inputEl.setAttr('placeholder', DEFAULT_CONFIG.weightFalloff);
       text
-      .setValue(this.plugin.data.config.weightFalloff?.toString())
+      .setValue(this.config.peek().weightFalloff?.toString())
       .onChange((value) => {
         const parsed = parseFloat(value);
         if (!Number.isNaN(parsed) && parsed <= 0) {
@@ -110,9 +106,7 @@ export default class FileActivitySettingTab extends PluginSettingTab {
       text.inputEl.onblur = (e: FocusEvent) => {
         const falloff = (e.target as HTMLInputElement).value;
         const parsed = parseFloat(falloff);
-        this.plugin.data.config.weightFalloff = parsed;
-        this.plugin.saveData();
-        this.plugin.view.redraw();
+        this.config.value = {...this.config.peek(), weightFalloff: parsed}
       };
     });
     
@@ -128,11 +122,9 @@ export default class FileActivitySettingTab extends PluginSettingTab {
       
       dropdown
       .addOptions(options)
-      .setValue(this.plugin.data.config.openType)
-      .onChange(async (value) => {
-        this.plugin.data.config.openType = value;
-        this.plugin.saveData();
-        this.display();
+      .setValue(this.config.peek().openType)
+      .onChange(async (value: "split" | "tab" | "window") => {
+        this.config.value = {...this.config.peek(), openType: value}
       });
     });
   }

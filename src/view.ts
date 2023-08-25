@@ -1,24 +1,182 @@
 
-import { ItemView, Menu, Notice, TFile, WorkspaceLeaf } from 'obsidian';
-import { DisplayEntry, getDisplayLinks } from "./data";
+import { App, ItemView, Menu, TFile, WorkspaceLeaf } from 'obsidian';
+import { DisplayEntry, LinkText, PluginConfig } from "./data";
 import FileActivityPlugin, { VIEW_TYPE } from './main';
 import { getSparklineAsInlineStyle } from './sparkline';
 
+import { Signal } from '@preact/signals';
+import { html } from "htm/preact";
+import { Ref, RefObject, VNode, createContext, createRef, h, render } from "preact";
+import { useContext } from "preact/hooks";
+
+const AppContext = createContext<App | undefined>(undefined)
+
+function FileActivity(props: {entries: Signal<DisplayEntry[]>, config: Signal<PluginConfig>}): VNode {
+  const app = useContext(AppContext);
+
+  // TODO: trigger rerender whenever active file changes, somehow.
+  const openFilePath = app !== undefined ? app.workspace.getActiveFile()?.path : undefined
+
+  return html`<div class="nav-folder mod-root">
+    <div class="nav-folder-children">
+      ${props.entries.value.map(entry => ActivityItem({
+        counts: entry.counts,
+        path: entry.path,
+        name: entry.name,
+        app: app, 
+        isOpenFile: (openFilePath !== undefined && entry.path === openFilePath),
+        openType: props.config.value.openType
+      }))}
+    </div>
+  </div>`
+}
+
+type ItemProps = {
+  counts: number[];
+  path: string | undefined;
+  isOpenFile: boolean | undefined;
+  app: App | undefined;
+  openType: "split" | "window" | "tab";
+  name: LinkText
+}
+
+function ActivityItem(props: ItemProps): VNode {
+  
+  const ref = createRef()
+  const sparkline = getSparklineAsInlineStyle(props.counts, Math.max(...props.counts), 10)
+  return html`
+    <div class="nav-file file-activity-file">
+      <div class="nav-file-title file-activity-title" ref=${ref}>
+        ${props.path !== undefined 
+          ? ResolvedLink({...props, parentRef: ref} as ItemProps & {path: string, parentRef: RefObject<any>}) 
+          : UnresolvedLink(props)}
+        <div class="file-activity-graph" style="${sparkline}"></div>
+      </div>
+    </div>
+  `
+}
+
+function ResolvedLink(props: ItemProps & {path: string, parentRef: RefObject<any>}) {
+  const ref = createRef();
+
+  const focusFile = async (): Promise<void> => {
+    if (props.app === undefined) { return; }
+    const targetFile = props.app.vault.getAbstractFileByPath(props.path);
+  
+    if (targetFile !== null && (targetFile instanceof TFile)) {
+      let leaf: WorkspaceLeaf | null = props.app.workspace.getMostRecentLeaf();
+  
+      if (leaf === null || leaf.getViewState().pinned) {
+        leaf = props.app.workspace.getLeaf(props.openType);
+      }
+      if (leaf !== null)
+        leaf.openFile(targetFile);
+    }
+  };
+  
+  const dragFile = (event: DragEvent) => {
+    if (props.app === undefined) { return; }
+    const file = props.app.metadataCache.getFirstLinkpathDest(
+      props.path,
+      '',
+    );
+  
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const dragManager = (props.app as any).dragManager;
+    const dragData = dragManager.dragFile(event, file);
+    dragManager.onDragStart(event, dragData);
+  }
+
+  // Use context to access app?
+  const hoverLink = (event: MouseEvent) => props.app?.workspace.trigger('hover-link', {
+    event,
+    source: VIEW_TYPE,
+    targetEl: ref.current,
+    hoverParent: props.parentRef.current,
+    linktext: props.path,
+  })
+
+  const contextMenu = (event: MouseEvent) => {
+    if (props.app === undefined) { return; }
+    const menu = new Menu();
+    const file = props.app.vault.getAbstractFileByPath(props.path);
+    props.app.workspace.trigger(
+      'file-menu',
+      menu,
+      file,
+      'link-context-menu',
+    );
+    menu.showAtPosition({ x: event.clientX, y: event.clientY });
+  }
+
+  return html`
+  <div 
+    ref=${ref}
+    class="nav-file-title-content file-activity-title-content ${props.isOpenFile ? 'is-active' : ''}"
+    draggable="true"
+    onClick=${focusFile}
+    onDragStart=${dragFile}
+    onMouseOver=${hoverLink}
+    onContextMenu=${contextMenu}
+  >
+    ${props.name}
+  </div>
+  `
+}
+
+function UnresolvedLink(props: ItemProps) {
+  const searchFile = () => {
+    if (props.app === undefined) { return; }
+    // Is there a better way?
+    window.location.href = `obsidian://search?vault=${props.app.vault.getName()}&query=[[${props.name}]]`
+  }
+
+  return html`
+  <div 
+    class="nav-file-title-content file-activity-title-content file-activity-unresolved"
+    onClick=${() => searchFile()}
+  >
+    ${props.name}
+  </div>
+  `
+}
 
 export default class FileActivityListView extends ItemView {
   private readonly plugin: FileActivityPlugin;
+  private component: VNode<any>
+  private displayEntries: Signal<DisplayEntry[]>
+  private config: Signal<PluginConfig>
 
   constructor(
     leaf: WorkspaceLeaf,
     plugin: FileActivityPlugin,
+    displayEntries: Signal<DisplayEntry[]>,
+    config: Signal<PluginConfig>
   ) {
     super(leaf);
-
     this.plugin = plugin;
+    this.displayEntries = displayEntries
+    this.config = config
   }
 
   public async onOpen(): Promise<void> {
-    this.redraw();
+
+    this.contentEl.empty()
+
+    // Pass 
+    // Janky because I've opted not to use JSX
+    this.component = h(
+      AppContext.Provider,
+      {
+        value: this.plugin.app, 
+        children: h(FileActivity, {entries: this.displayEntries, config: this.config})
+      },
+    )
+
+    render(
+      this.component,
+      this.contentEl
+    );
   }
 
   public getViewType(): string {
@@ -32,110 +190,4 @@ export default class FileActivityListView extends ItemView {
   public getIcon(): string {
     return 'activity';
   }
-  
-  public readonly redraw = (): void => {
-    const openFile = this.app.workspace.getActiveFile();
-
-    const rootEl = createDiv({ cls: 'nav-folder mod-root' });
-    const childrenEl = rootEl.createDiv({ cls: 'nav-folder-children' });
-
-    const topLinks: Array<DisplayEntry> = getDisplayLinks(this.plugin.data)
-
-    Object.values(topLinks).forEach((entryData) => {
-      const entry = childrenEl.createDiv({ cls: 'nav-file file-activity-file' });
-      const entryContent = entry.createDiv({ cls: 'nav-file-title file-activity-title' })
-      const entryText = entryContent.createDiv({ cls: 'nav-file-title-content file-activity-title-content' })
-      entryText.setText(entryData.name)
-      entryContent.createDiv({
-        cls: 'file-activity-graph',
-        attr: {'style': getSparklineAsInlineStyle(entryData.counts, Math.max(...entryData.counts), 10)}
-      })
-
-      if (entryData.path !== undefined) {
-        const path = entryData.path as string;
-        entryContent.addEventListener('click', (event: MouseEvent) => {
-          this.focusFile(entryData.path as string, event.ctrlKey || event.metaKey);
-        });
-
-        entryContent.addEventListener('dragstart', (event: DragEvent) => {
-          const file = this.app.metadataCache.getFirstLinkpathDest(
-            path,
-            '',
-          );
-
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const dragManager = (this.app as any).dragManager;
-          const dragData = dragManager.dragFile(event, file);
-          dragManager.onDragStart(event, dragData);
-        });
-
-        entryContent.addEventListener('mouseover', (event: MouseEvent) => {
-          this.app.workspace.trigger('hover-link', {
-            event,
-            source: VIEW_TYPE,
-            hoverParent: rootEl,
-            targetEl: entry,
-            linktext: entryData.path,
-          });
-        });
-
-        entryContent.addEventListener('contextmenu', (event: MouseEvent) => {
-          const menu = new Menu();
-          const file = this.app.vault.getAbstractFileByPath(path);
-          this.app.workspace.trigger(
-            'file-menu',
-            menu,
-            file,
-            'link-context-menu',
-          );
-          menu.showAtPosition({ x: event.clientX, y: event.clientY });
-        });
-
-        if (openFile && entryData.path === openFile.path) {
-          entryContent.addClass('is-active');
-        }
-
-        entryContent.setAttr('draggable', 'true');
-      
-      } else {
-        // Clicking an unresolved entry will link into the search box if it's enabled
-        entryText.addClass("file-activity-unresolved")
-        entryContent.addEventListener('click', (event: MouseEvent) => {
-          window.location.href = `obsidian://search?vault=${this.app.vault.getName()}&query=[[${entryData.name}]]`
-        });
-      }
-    });
-
-    const contentEl = this.containerEl.children[1];
-    contentEl.empty();
-    contentEl.appendChild(rootEl);
-  };
-
-  /**
-   * Open the provided file in the most recent leaf.
-   *
-   * @param shouldSplit Whether the file should be opened in a new split, or in
-   * the most recent split. If the most recent split is pinned, this is set to
-   * true.
-   */
-  private readonly focusFile = async (path: string, shouldSplit = false): Promise<void> => {
-    const targetFile = this.app.vault.getAbstractFileByPath(path);
-
-    if (targetFile !== null && (targetFile instanceof TFile)) {
-      let leaf: WorkspaceLeaf | null = this.app.workspace.getMostRecentLeaf();
-
-      if (shouldSplit || leaf === null || leaf.getViewState().pinned) {
-        if (this.plugin.data.config.openType == 'split')
-          leaf = this.app.workspace.getLeaf('split');
-        else if (this.plugin.data.config.openType == 'window')
-          leaf = this.app.workspace.getLeaf('window');
-        else
-          leaf = this.app.workspace.getLeaf('tab');
-      }
-      leaf.openFile(targetFile);
-    } else {
-      new Notice('Cannot find a file with that name');
-      this.redraw();
-    }
-  };
 }

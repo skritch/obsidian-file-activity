@@ -1,25 +1,33 @@
 
 import { Plugin, TAbstractFile, TFile, WorkspaceLeaf } from 'obsidian';
-import { DEFAULT_DATA, remove, PathStr, rename, update, Link, LinkText, PluginData } from './data';
+import { remove, PathStr, rename, update, Link, LinkText, LinkKey, ReverseIndex } from './data';
 import FileActivitySettingTab from './settings';
 import FileActivityListView from './view';
+import { Signal, signal } from '@preact/signals';
+import { setupConfigSignals, setupStateSignals } from './signals';
 
 const PLUGIN_NAME = 'File Activity Plugin';
 export const VIEW_TYPE = 'file-activity';
 
 export default class FileActivityPlugin extends Plugin {
-  public data: PluginData;
   public view: FileActivityListView;
+  private index: ReverseIndex
+  private updateSignal: Signal<number>
   
   // Runs on app start and plugin load
   public async onload(): Promise<void> {
     console.log('File Activity: Loading plugin v' + this.manifest.version);
     
-    await this.loadData();
-    
+    const config = await setupConfigSignals(this)
+
+    this.index = {}
+    this.updateSignal = signal(0)
+    await this.indexAll()
+    const displayEntries = setupStateSignals(this.index, this.updateSignal, config)
+
     this.registerView(
       VIEW_TYPE,
-      (leaf) => (this.view = new FileActivityListView(leaf, this)),
+      (leaf) => (this.view = new FileActivityListView(leaf, this, displayEntries, config)),
       );
 
       if (this.app.workspace.layoutReady) {
@@ -36,11 +44,7 @@ export default class FileActivityPlugin extends Plugin {
       this.registerEvent(this.app.vault.on('delete', this.handleDelete));
       this.registerEvent(this.app.metadataCache.on('resolve', this.handleResolve));
       this.registerEvent(this.app.metadataCache.on('resolved', this.handleResolved));
-      this.addSettingTab(new FileActivitySettingTab(this.app, this));
-
-      await this.indexAll()
-      await this.saveData()
-      this.view.redraw()
+      this.addSettingTab(new FileActivitySettingTab(this.app, this, config));
   }
   
   public onunload(): void {
@@ -48,17 +52,6 @@ export default class FileActivityPlugin extends Plugin {
     (this.app.workspace as any).unregisterHoverLinkSource(
       VIEW_TYPE,
     );
-  }
-  
-  public async loadData(): Promise<void> {
-    const data = DEFAULT_DATA();
-    data.config = Object.assign(data.config, await super.loadData())
-    this.data = data;
-  }
-  
-  public async saveData(): Promise<void> {
-    // Only save the config; regenerate the state at startup.
-    await super.saveData(this.data.config);
   }
   
   private readonly initView = async (): Promise<void> => {
@@ -88,7 +81,7 @@ export default class FileActivityPlugin extends Plugin {
   }
 
   private indexAll = async (): Promise<void> => {
-    const mdFiles = app.vault.getMarkdownFiles()
+    const mdFiles = this.app.vault.getMarkdownFiles()
     console.log(PLUGIN_NAME + ': Indexing ' + mdFiles.length + ' files.')
     mdFiles.forEach((file) => {
       const links = this.getLinksForPath(file.path)
@@ -98,14 +91,15 @@ export default class FileActivityPlugin extends Plugin {
           file.path,
           file.stat.ctime,
           links,
-          this.data.state
+          this.index
         )
       }
     })
+    this.updateSignal.value = this.updateSignal.value + 1
   }
   
+  
   /** EVENT HANDLERS */
-  // Note event handlers currently *mutate* the plugin .data object.
   
   /**
    * This appears to fire:
@@ -117,11 +111,12 @@ export default class FileActivityPlugin extends Plugin {
    * - Occasionally at other times, it appears.
    */
   private readonly handleResolve = async (file: TFile): Promise<void> => {
+    console.log()
     update(
       file.path,
       file.stat.ctime,
       this.getLinksForPath(file.path),
-      this.data.state
+      this.index
     )
   }
 
@@ -132,15 +127,14 @@ export default class FileActivityPlugin extends Plugin {
    * there are a lot of changes, particularly at app startup.
    */
   private handleResolved = async (): Promise<void> => {
-    this.saveData()
-    this.view.redraw()
+    this.updateSignal.value = this.updateSignal.value + 1
   }
   
   private handleRename = async (
     file: TAbstractFile,
     oldPath: string,
   ): Promise<void> => {
-    const stat = (await app.vault.adapter.stat(file.path))
+    const stat = (await this.app.vault.adapter.stat(file.path))
 
     if (stat?.mtime === undefined) {
       return
@@ -151,24 +145,20 @@ export default class FileActivityPlugin extends Plugin {
       oldPath,
       stat.ctime,
       this.getLinksForPath(file.path),
-      this.data.state
+      this.index
     )
-
-    await this.saveData();
-    this.view.redraw()
+    this.updateSignal.value = this.updateSignal.value + 1
   };
             
   private handleDelete = async (
     file: TAbstractFile,
   ): Promise<void> => {
-    remove(file.path, this.data.state)
-    await this.saveData();
-    this.view.redraw();
+    remove(file.path, this.index)
+    this.updateSignal.value = this.updateSignal.value + 1
   };
 
 
   // TODO: can we use Obsidian's own function for this? MetadataCache.fileToLinktext?
-  // TODO: cache Regex at least
   // TODOL strip path#heading suffixes
   pathToLinkText = (path: PathStr): LinkText => {
     return path.replace(/^.*\//, '').replace(/\.[^/.]+$/, '')
@@ -179,8 +169,8 @@ export default class FileActivityPlugin extends Plugin {
    */
   private getLinksForPath = (path: PathStr): Array<Link> => {
     let links: Array<Link> = []
-    const resolvedlinks = app.metadataCache.resolvedLinks[path];
-    const unresolvedLinks = app.metadataCache.unresolvedLinks[path]
+    const resolvedlinks = this.app.metadataCache.resolvedLinks[path];
+    const unresolvedLinks = this.app.metadataCache.unresolvedLinks[path]
 
     if (resolvedlinks !== undefined) {
       links = links.concat(Object.keys(resolvedlinks).map((path) => {
@@ -202,3 +192,4 @@ export default class FileActivityPlugin extends Plugin {
     return links
   }
 }
+
