@@ -10,9 +10,9 @@ import { RefObject, VNode, createRef, h, render } from "preact";
 
 
 // TODO: can we use Obsidian's own function for this? MetadataCache.fileToLinktext?
-// TODO: strip path#heading suffixes
+// Or just use paths in the case where there are two files with the same name
 export function pathToLinkText(path: PathStr): LinkText {
-  return path.replace(/^.*\//, '').replace(/\.[^/.]+$/, '')
+  return path.replace(/^.*\//, '').replace(/\.[^/.]+$/, '').replace(/#.+$/, '')
 }
 
 
@@ -44,7 +44,7 @@ type ItemProps = {
 function ActivityItem(props: ItemProps): VNode {
   
   const ref = createRef()
-  const sparkline = getSparklineAsInlineStyle(props.counts, Math.max(...props.counts), 10)
+  const sparkline = getSparklineAsInlineStyle(props.counts, 10)
   return html`
     <div class="nav-file file-activity-file">
       <div class="nav-file-title file-activity-title ${props.isOpenFile ? 'is-active' : ''}" ref=${ref}>

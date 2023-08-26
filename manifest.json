@@ -1,10 +1,9 @@
 {
 	"id": "obsidian-file-activity",
 	"name": "File Activity",
-	"version": "1.0.0",
+	"version": "0.1.0",
 	"minAppVersion": "0.15.0",
-	"description": "Tracks which files and tags you've recently edited or linked to.",
+	"description": "Tracks files you've recently linked to.",
 	"author": "Sam Kritchevsky",
-	"authorUrl": "https://samkrit.ch",
 	"isDesktopOnly": false
 }

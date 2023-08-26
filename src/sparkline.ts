@@ -5,15 +5,15 @@
  * Generate an SVG sparkline from a timeseries of non-negative integers. The series
  * will be flipped and scaled such that 0 => (ymax * scale), and `ymax` => 0.
  */
-export const sparklinePath = (timeseries: Array<number>, ymax: number, scale: number) => {
-  const adjusted = timeseries.map((y) => scale * (1 - y/ymax))
-  const initSVG = "M "
-  return adjusted.reduce((acc, cur, i) => {
-    if (i > 0) { 
-      acc = acc + "L "
-    }
-    return acc + scale * i + " " + cur.toFixed(1) + " "
-  }, initSVG)
+export const sparklinePath = (timeseries: Array<number>, scale: number) => {
+  const diffs = timeseries.map((y) => scale * (Math.min(y, 3) / 3))
+  const forward = diffs.reduce((acc, diff, i) => {
+    return acc + "L " + scale * i + " " + (scale - diff).toFixed(1) + " "
+  }, "")
+
+  const y0 = scale.toFixed(1)
+  const xf = (scale * timeseries.length).toFixed(1)
+  return `M 0 ${y0} ` + forward + `L ${xf} ${y0}`
 };
 
 
@@ -32,16 +32,19 @@ const svgToInlineStyle = (svg: string) => {
  * 
  * `scale` sets the size of the whole SVG coordinate system, in case it causes issues.
  */
-export const getSparklineAsInlineStyle = (timeseries: Array<number>, ymax: number, scale: number) => {
-  const path = sparklinePath(timeseries, ymax, scale)
-  const [x0, y0, dx, dy] = [0, 0, scale * (timeseries.length - 1), scale * ymax]
+export const getSparklineAsInlineStyle = (timeseries: Array<number>, scale: number) => {
+  const path = sparklinePath(timeseries, scale)
+  const [x0, y0, dx, dy] = [-1, -1, scale * (timeseries.length - 1) + 2, scale + 2]
   const svg = `
-  <svg xmlns='http://www.w3.org/2000/svg' viewBox='${x0 - scale} ${y0 - scale} ${dx + scale * 2} ${dy + scale * 2}' preserveAspectRatio='none'>
+  <svg xmlns='http://www.w3.org/2000/svg' 
+      viewBox='${x0} ${y0} ${dx} ${dy}' 
+      preserveAspectRatio='none'>
     <path
       d='${path}'
-      stroke-width='1.5px'
+      stroke-width='1px'
       stroke='white'
       fill='transparent'
+      
     />
   </svg>
   `
