@@ -13,8 +13,6 @@ const AppContext = createContext<App | undefined>(undefined)
 
 function FileActivity(props: {entries: Signal<DisplayEntry[]>, config: Signal<PluginConfig>}): VNode {
   const app = useContext(AppContext);
-
-  // TODO: trigger rerender whenever active file changes, somehow.
   const openFilePath = app !== undefined ? app.workspace.getActiveFile()?.path : undefined
 
   return html`<div class="nav-folder mod-root">
@@ -45,7 +43,7 @@ function ActivityItem(props: ItemProps): VNode {
   const sparkline = getSparklineAsInlineStyle(props.counts, Math.max(...props.counts), 10)
   return html`
     <div class="nav-file file-activity-file">
-      <div class="nav-file-title file-activity-title" ref=${ref}>
+      <div class="nav-file-title file-activity-title ${props.isOpenFile ? 'is-active' : ''}" ref=${ref}>
         ${props.link.isResolved
           ? ResolvedLinkItem({...props, parentRef: ref} as ItemProps & {link: ResolvedLink, parentRef: RefObject<any>}) 
           : UnresolvedLinkItem(props as ItemProps & {link: UnresolvedLink})}
@@ -58,7 +56,7 @@ function ActivityItem(props: ItemProps): VNode {
 function ResolvedLinkItem(props: ItemProps & {link: ResolvedLink, parentRef: RefObject<any>}) {
   const ref = createRef();
   const entryText = pathToLinkText(props.link.path)
-
+  
   const focusFile = async (): Promise<void> => {
     if (props.app === undefined) { return; }
     const targetFile = props.app.vault.getAbstractFileByPath(props.link.path);
@@ -111,7 +109,7 @@ function ResolvedLinkItem(props: ItemProps & {link: ResolvedLink, parentRef: Ref
   return html`
   <div 
     ref=${ref}
-    class="nav-file-title-content file-activity-title-content ${props.isOpenFile ? 'is-active' : ''}"
+    class="nav-file-title-content file-activity-title-content"
     draggable="true"
     onClick=${focusFile}
     onDragStart=${dragFile}

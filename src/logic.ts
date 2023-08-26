@@ -1,6 +1,6 @@
 
 
-import { DEFAULT_CONFIG, DisplayEntry, LinkKey, PluginConfig, ReverseIndex, getDisplayEntry } from "./data";
+import { DisplayEntry, LinkKey, PluginConfig, ReverseIndex, getDisplayEntry } from "./data";
 
 import { Signal, computed, effect, signal } from '@preact/signals';
 
@@ -13,8 +13,6 @@ export function deriveDisplayEntries(
   config: Signal<PluginConfig>
 ): Signal<DisplayEntry[]> {
 
-  // TODO
-  const today = signal(new Date().setHours(0, 0, 0, 0))
   // TODO: trigger rerender whenever active file changes, somehow.
   // const openFilePath = signal(app.workspace.getActiveFile()?.path)
   // currently just handled in the view 
@@ -49,9 +47,7 @@ export function deriveDisplayEntries(
   // Could be more efficient if we didn't recompute unchanged entries...
   // Store the "update counter" on each entry?
   effect(() => {
-    // Subscribe to these
-    today.value;
-    update.value;
+    update.value; // subscribe
     displayEntries.value = getDisplayEntries(config.value, regexes.value)
   })
 

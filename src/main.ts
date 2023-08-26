@@ -48,7 +48,10 @@ export default class FileActivityPlugin extends Plugin {
       this.registerEvent(this.app.vault.on('rename', this.handleRename));
       this.registerEvent(this.app.vault.on('delete', this.handleDelete));
       this.registerEvent(this.app.metadataCache.on('resolve', this.handleResolve));
-      this.registerEvent(this.app.metadataCache.on('resolved', this.handleResolved));
+      this.registerEvent(this.app.metadataCache.on('resolved', this.triggerUpdate));
+      // Catch a couple events that can make our "active file" in the view go out of date
+      this.registerEvent(this.app.workspace.on("file-open", this.triggerUpdate))
+      this.registerEvent(this.app.workspace.on("window-close", this.triggerUpdate))
       this.addSettingTab(new FileActivitySettingTab(this.app, this, config));
   }
   
@@ -124,13 +127,7 @@ export default class FileActivityPlugin extends Plugin {
     )
   }
 
-  /**
-   * Fires when all queued files have been resolved. 
-   * 
-   * We save and update view here to avoid duplicate work when 
-   * there are a lot of changes, particularly at app startup.
-   */
-  private handleResolved = async (): Promise<void> => {
+  private triggerUpdate = (): void => {
     this.updateSignal.value = this.updateSignal.value + 1
   }
   
@@ -151,14 +148,14 @@ export default class FileActivityPlugin extends Plugin {
       this.getLinksForPath(file.path),
       this.index
     )
-    this.updateSignal.value = this.updateSignal.value + 1
+    this.triggerUpdate()
   };
             
   private handleDelete = async (
     file: TAbstractFile,
   ): Promise<void> => {
     remove(file.path, this.index)
-    this.updateSignal.value = this.updateSignal.value + 1
+    this.triggerUpdate()
   };
       
   /**

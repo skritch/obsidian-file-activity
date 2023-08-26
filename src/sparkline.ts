@@ -6,7 +6,7 @@
  * will be flipped and scaled such that 0 => (ymax * scale), and `ymax` => 0.
  */
 export const sparklinePath = (timeseries: Array<number>, ymax: number, scale: number) => {
-  const adjusted = timeseries.map((y) => scale * (ymax - y/ymax))
+  const adjusted = timeseries.map((y) => scale * (1 - y/ymax))
   const initSVG = "M "
   return adjusted.reduce((acc, cur, i) => {
     if (i > 0) { 
