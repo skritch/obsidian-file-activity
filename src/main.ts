@@ -2,7 +2,7 @@
 import { Signal, effect, signal } from '@preact/signals';
 import { Plugin, TAbstractFile, TFile, WorkspaceLeaf } from 'obsidian';
 import { DEFAULT_CONFIG, Link, PathStr, PluginConfig, ReverseIndex, remove, rename, update } from './data';
-import { deriveDisplayEntries } from './logic';
+import { deriveDisplayEntries } from './display';
 import FileActivitySettingTab from './settings';
 import FileActivityListView from './view';
 

@@ -1,12 +1,19 @@
 
 import { App, ItemView, Menu, TFile, WorkspaceLeaf } from 'obsidian';
-import { DisplayEntry, Link, PluginConfig, ResolvedLink, UnresolvedLink, pathToLinkText } from "./data";
+import { DisplayEntry, Link, LinkText, PathStr, PluginConfig, ResolvedLink, UnresolvedLink } from "./data";
 import FileActivityPlugin, { VIEW_TYPE } from './main';
 import { getSparklineAsInlineStyle } from './sparkline';
 
 import { Signal } from '@preact/signals';
 import { html } from "htm/preact";
 import { RefObject, VNode, createRef, h, render } from "preact";
+
+
+// TODO: can we use Obsidian's own function for this? MetadataCache.fileToLinktext?
+// TODO: strip path#heading suffixes
+export function pathToLinkText(path: PathStr): LinkText {
+  return path.replace(/^.*\//, '').replace(/\.[^/.]+$/, '')
+}
 
 
 function FileActivity(props: {entries: Signal<DisplayEntry[]>, config: Signal<PluginConfig>, app: App}): VNode {

@@ -1,6 +1,6 @@
 import { signal } from "@preact/signals";
-import { countlinksByDate, ReverseIndexEntry, DEFAULT_CONFIG, ReverseIndex, PluginConfig} from "../src/data"
-import { deriveDisplayEntries } from "../src/logic"
+import { ReverseIndexEntry, DEFAULT_CONFIG, ReverseIndex, PluginConfig} from "../src/data"
+import { countlinksByDate, deriveDisplayEntries } from "../src/display"
 
 describe("Display functions", () => {
   const now = Date.now()
