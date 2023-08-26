@@ -1,10 +1,10 @@
 
+import { Signal, effect, signal } from '@preact/signals';
 import { Plugin, TAbstractFile, TFile, WorkspaceLeaf } from 'obsidian';
-import { remove, PathStr, rename, update, Link, LinkText, LinkKey, ReverseIndex, DEFAULT_CONFIG, PluginConfig } from './data';
+import { DEFAULT_CONFIG, Link, PathStr, PluginConfig, ReverseIndex, remove, rename, update } from './data';
+import { deriveDisplayEntries } from './logic';
 import FileActivitySettingTab from './settings';
 import FileActivityListView from './view';
-import { Signal, effect, signal } from '@preact/signals';
-import { deriveDisplayEntries } from './logic';
 
 export const PLUGIN_NAME = 'File Activity Plugin';
 export const VIEW_TYPE = 'file-activity';
@@ -38,6 +38,7 @@ export default class FileActivityPlugin extends Plugin {
       if (this.app.workspace.layoutReady) {
         this.initView();
       } else {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         this.registerEvent(this.app.workspace.on('layout-ready' as any, this.initView));
       }
       this.addCommand({
@@ -185,4 +186,3 @@ export default class FileActivityPlugin extends Plugin {
     return links
   }
 }
-

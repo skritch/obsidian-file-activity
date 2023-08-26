@@ -1,9 +1,11 @@
 
+/** DATA TYPES */
 
 export type PathStr = string;
 export type LinkText = string;
 export type DateNumber = number;
 export type LinksByDay = Array<number>;
+
 export type ResolvedLink = {
   isResolved: true
   path: PathStr
@@ -12,33 +14,23 @@ export type UnresolvedLink = {
   isResolved: false
   text: LinkText
 }
-export type LinkKey = PathStr | LinkText
 export type Link = ResolvedLink | UnresolvedLink
+export type LinkKey = PathStr | LinkText
 const keyForLink = (link: Link): LinkKey => {return (link.isResolved) ? link.path : link.text};
+
 export interface ReverseIndexEntry {
   link: Link,
-  // Path of file which links to this one => file created ts
   linksBySource: Record<PathStr, DateNumber>,
 }
 // Reverse index of path/link text => everything that links to it.
 export type ReverseIndex = Record<LinkKey, ReverseIndexEntry>
 
-// Only plugin configuration is saved to storage
 export interface PluginConfig {
-  // Settings
   displayDays: number,
   displayCount: number,
   weightHalflife: number,
   disallowedPaths: string[],
   openType: "split" | "window" | "tab"
-}
-
-// Data for entries in the UI
-export interface DisplayEntry {
-  link: Link,
-  counts: LinksByDay,
-  total: number,
-  weight: number,
 }
 
 export const DEFAULT_CONFIG: PluginConfig = {
@@ -49,7 +41,15 @@ export const DEFAULT_CONFIG: PluginConfig = {
   openType: 'tab'
 };
 
-/* INDEX UPDATE EVENT HANDLERS */
+// Data for entries in the UI
+export interface DisplayEntry {
+  link: Link,
+  counts: LinksByDay,
+  total: number,
+  weight: number,
+}
+
+/* INDEXING EVENT HANDLERS */
 
 /**
  * Sync our state with a current list of links for a given source.

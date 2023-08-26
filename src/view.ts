@@ -42,7 +42,7 @@ function ActivityItem(props: ItemProps): VNode {
     <div class="nav-file file-activity-file">
       <div class="nav-file-title file-activity-title ${props.isOpenFile ? 'is-active' : ''}" ref=${ref}>
         ${props.link.isResolved
-          ? ResolvedLinkItem({...props, parentRef: ref} as ItemProps & {link: ResolvedLink, parentRef: RefObject<any>}) 
+          ? ResolvedLinkItem({...props, parentRef: ref} as ItemProps & {link: ResolvedLink, parentRef: RefObject<HTMLElement>}) 
           : UnresolvedLinkItem(props as ItemProps & {link: UnresolvedLink})}
         <div class="file-activity-graph" style="${sparkline}"></div>
       </div>
@@ -50,7 +50,7 @@ function ActivityItem(props: ItemProps): VNode {
   `
 }
 
-function ResolvedLinkItem(props: ItemProps & {link: ResolvedLink, parentRef: RefObject<any>}) {
+function ResolvedLinkItem(props: ItemProps & {link: ResolvedLink, parentRef: RefObject<HTMLElement>}) {
   const ref = createRef();
   const entryText = pathToLinkText(props.link.path)
   
@@ -133,6 +133,7 @@ function UnresolvedLinkItem(props: ItemProps & {link: UnresolvedLink}) {
 
 export default class FileActivityListView extends ItemView {
   private readonly plugin: FileActivityPlugin;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private component: VNode<any>
   private displayEntries: Signal<DisplayEntry[]>
   private config: Signal<PluginConfig>

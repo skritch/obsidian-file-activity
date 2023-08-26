@@ -1,8 +1,5 @@
-
-
-import { DisplayEntry, LinkKey, PluginConfig, ReverseIndex, getDisplayEntry } from "./data";
-
 import { Signal, computed, effect, signal } from '@preact/signals';
+import { DisplayEntry, LinkKey, PluginConfig, ReverseIndex, getDisplayEntry } from "./data";
 
 /**
  * Set up the signals to derive the entries in the plugin display.
@@ -12,11 +9,6 @@ export function deriveDisplayEntries(
   update: Signal<number>,
   config: Signal<PluginConfig>
 ): Signal<DisplayEntry[]> {
-
-  // TODO: trigger rerender whenever active file changes, somehow.
-  // const openFilePath = signal(app.workspace.getActiveFile()?.path)
-  // currently just handled in the view 
-
   const regexes = computed(() => {
     return config.value.disallowedPaths
       .filter((path) => path.length > 0)
@@ -47,11 +39,11 @@ export function deriveDisplayEntries(
   // Could be more efficient if we didn't recompute unchanged entries...
   // Store the "update counter" on each entry?
   effect(() => {
-    update.value; // subscribe
+    update.value; // Subscribe to signal
     displayEntries.value = getDisplayEntries(config.value, regexes.value)
   })
 
-    // Updates whenever displayEntries is recomputed
+  // Updates whenever displayEntries is recomputed
   const topN: Signal<DisplayEntry[]> = computed(() => {
     return Object.values(displayEntries.value)
       .sort(((e1, e2) => e2.weight - e1.weight))  // Weight descending
