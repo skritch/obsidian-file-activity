@@ -48,9 +48,9 @@ export default class FileActivitySettingTab extends PluginSettingTab {
     .setDesc('Maximum number of files to track.')
     .addText((text) => {
       text.inputEl.setAttr('type', 'number');
-      text.inputEl.setAttr('placeholder', DEFAULT_CONFIG.maxLength);
+      text.inputEl.setAttr('placeholder', DEFAULT_CONFIG.displayCount);
       text
-      .setValue(this.config.peek().maxLength?.toString())
+      .setValue(this.config.peek().displayCount?.toString())
       .onChange((value) => {
         const parsed = parseInt(value, 10);
         if (!Number.isNaN(parsed) && parsed <= 0) {
@@ -61,7 +61,7 @@ export default class FileActivitySettingTab extends PluginSettingTab {
       text.inputEl.onblur = (e: FocusEvent) => {
         const maxfiles = (e.target as HTMLInputElement).value;
         const parsed = parseInt(maxfiles, 10);
-        this.config.value = {...this.config.peek(), maxLength: parsed}
+        this.config.value = {...this.config.peek(), displayCount: parsed}
       };
     });
 
@@ -71,9 +71,9 @@ export default class FileActivitySettingTab extends PluginSettingTab {
     .setDesc('Number of days of activity to use in ranking and visualizing')
     .addText((text) => {
       text.inputEl.setAttr('type', 'number');
-      text.inputEl.setAttr('placeholder', DEFAULT_CONFIG.activityDays);
+      text.inputEl.setAttr('placeholder', DEFAULT_CONFIG.displayDays);
       text
-      .setValue(this.config.peek().activityDays?.toString())
+      .setValue(this.config.peek().displayDays?.toString())
       .onChange((value) => {
         const parsed = parseInt(value, 10);
         if (!Number.isNaN(parsed) && parsed <= 0) {
@@ -84,29 +84,29 @@ export default class FileActivitySettingTab extends PluginSettingTab {
       text.inputEl.onblur = (e: FocusEvent) => {
         const days = (e.target as HTMLInputElement).value;
         const parsed = parseInt(days, 10);
-        this.config.value = {...this.config.peek(), activityDays: parsed}
+        this.config.value = {...this.config.peek(), displayDays: parsed}
       };
     });
 
     new Setting(containerEl)
-    .setName('Downranking Factor')
-    .setDesc('Factor by which older links are downweighted. Small numbers (much less than 1) will bias towards very recent activity.')
+    .setName('Half-life')
+    .setDesc('Determines how older links are downweighted when determining rankings in the plugin display. In days.')
     .addText((text) => {
       text.inputEl.setAttr('type', 'number');
-      text.inputEl.setAttr('placeholder', DEFAULT_CONFIG.weightFalloff);
+      text.inputEl.setAttr('placeholder', DEFAULT_CONFIG.weightHalflife);
       text
-      .setValue(this.config.peek().weightFalloff?.toString())
+      .setValue(this.config.peek().weightHalflife?.toString())
       .onChange((value) => {
-        const parsed = parseFloat(value);
+        const parsed = parseInt(value, 10);
         if (!Number.isNaN(parsed) && parsed <= 0) {
-          new Notice('Must be a positive number');
+          new Notice('Must be a positive integer');
           return;
         }
       });
       text.inputEl.onblur = (e: FocusEvent) => {
-        const falloff = (e.target as HTMLInputElement).value;
-        const parsed = parseFloat(falloff);
-        this.config.value = {...this.config.peek(), weightFalloff: parsed}
+        const value = (e.target as HTMLInputElement).value;
+        const parsed = parseInt(value, 10);
+        this.config.value = {...this.config.peek(), weightHalflife: parsed}
       };
     });
     

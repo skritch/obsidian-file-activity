@@ -32,7 +32,7 @@ export function deriveDisplayEntries(
             return acc 
           }
         }
-        const entry = getDisplayEntry(indexEntry, conf.weightFalloff, conf.activityDays)
+        const entry = getDisplayEntry(indexEntry, conf.weightHalflife, conf.displayDays)
         if (entry.total > 0) {
           acc[key] = entry
         }
@@ -55,7 +55,7 @@ export function deriveDisplayEntries(
   const topN: Signal<DisplayEntry[]> = computed(() => {
     return Object.values(displayEntries.value)
       .sort(((e1, e2) => e2.weight - e1.weight))  // Weight descending
-      .slice(0, config.value.maxLength)
+      .slice(0, config.value.displayCount)
   })
 
   return topN

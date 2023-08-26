@@ -26,9 +26,9 @@ export type ReverseIndex = Record<LinkKey, ReverseIndexEntry>
 // Only plugin configuration is saved to storage
 export interface PluginConfig {
   // Settings
-  activityDays: number,
-  weightFalloff: number,  // Float, greater than zero. Near zero = more recent links go to the top of the list.
-  maxLength: number,
+  displayDays: number,
+  displayCount: number,
+  weightHalflife: number,
   disallowedPaths: string[],
   openType: "split" | "window" | "tab"
 }
@@ -42,10 +42,10 @@ export interface DisplayEntry {
 }
 
 export const DEFAULT_CONFIG: PluginConfig = {
-  activityDays: 31,
-  weightFalloff: 0.25,
+  displayDays: 31,
+  weightHalflife: 10,
   disallowedPaths: [],
-  maxLength: 50,
+  displayCount: 50,
   openType: 'tab'
 };
 
@@ -136,16 +136,16 @@ export function remove(
  */
 export function getDisplayEntry(
   entry: ReverseIndexEntry,
-  weightFalloff: number,
-  activityDays: number
+  weightHalflife: number,
+  displayDays: number
 ): DisplayEntry {
-  const counts = countlinksByDate(entry, activityDays)
+  const counts = countlinksByDate(entry, displayDays)
   const total = counts.reduce((acc, cur) => acc + cur, 0)
   return {
     link: entry.link,
     counts: counts,
     total: total,
-    weight: weightLinksByDay(counts, weightFalloff * activityDays)
+    weight: weightLinksByDay(counts, weightHalflife)
   }
 }
 
@@ -175,10 +175,12 @@ export function countlinksByDate(links: ReverseIndexEntry, maxDays: number): Lin
 /**
  * Returns sum_n c_n * exp(-n / falloff)), where c_n = the count of links created n days ago.
  */
-function weightLinksByDay(counts: LinksByDay, falloff: number): number {
+function weightLinksByDay(counts: LinksByDay, weightHalflife: number): number {
   return counts.reduce((acc: number, cur: number, i: number) => {
-    const n = counts.length - i - 1
-    return acc + cur * Math.exp(-1 * n / falloff)
+    const nDaysAgo = counts.length - i - 1
+    // nDaysAgo = weightHalflife => downweight of 1/2
+    // exp(-1) * 1.359 = 1/2
+    return acc + cur * 1.359 * Math.exp(-1 * nDaysAgo / weightHalflife )
   }, 0)
 }
 

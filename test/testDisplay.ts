@@ -1,5 +1,5 @@
 import { signal } from "@preact/signals";
-import { countlinksByDate, ReverseIndexEntry, DEFAULT_CONFIG, ReverseIndex} from "../src/data"
+import { countlinksByDate, ReverseIndexEntry, DEFAULT_CONFIG, ReverseIndex, PluginConfig} from "../src/data"
 import { deriveDisplayEntries } from "../src/logic"
 
 describe("Display functions", () => {
@@ -98,10 +98,10 @@ describe("Display functions", () => {
         }
       };
 
-      const config = {
+      const config: PluginConfig = {
         ...DEFAULT_CONFIG,
-        activityTTLdays: 3,
-        maxLength: 2,
+        displayDays: 3,
+        displayCount: 2,
         disallowedPaths: ["^disallow/"],
       }
 
