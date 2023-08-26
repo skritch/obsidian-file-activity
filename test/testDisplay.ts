@@ -1,5 +1,6 @@
-import { countlinksByDate, ReverseIndexEntry, getDisplayLinks, DEFAULT_DATA, PluginState} from "../src/data"
-
+import { signal } from "@preact/signals";
+import { countlinksByDate, ReverseIndexEntry, DEFAULT_CONFIG, ReverseIndex} from "../src/data"
+import { deriveDisplayEntries } from "../src/logic"
 
 describe("Display functions", () => {
   const now = Date.now()
@@ -9,8 +10,7 @@ describe("Display functions", () => {
   describe("countlinksByDate", () => {
     test("Counts properly", () => {
       const entry: ReverseIndexEntry = {
-        text: "test",
-        isResolved: true,
+        link: {path: "test.md", isResolved: true},
         linksBySource: {
           "a": now,
           "b": now - msPerDay,
@@ -23,104 +23,93 @@ describe("Display functions", () => {
     });
   });
 
-  describe("getDisplayLinks", () => {
+  describe("deriveDisplayEntries", () => {
     test("Downweights links from older days", () => {
-      const initialState: PluginState = {
-        reverseIndex: {
-          "today.md": {
-            text: "today",
-            isResolved: true,
-            linksBySource: {"source.md": now}
-          },
-          "today2.md": {
-            text: "today2",
-            isResolved: true,
-            linksBySource: {"source.md": now, "source2.md": now}
-          },
-          "yesterday.md": {
-            text: "yesterday",
-            isResolved: true,
-            linksBySource: {"source3.md": now - msPerDay}
-          }
+      const initialState: ReverseIndex = {
+        "today.md": {
+          link: {path: "today.md", isResolved: true},
+          linksBySource: {"source.md": now}
+        },
+        "today2.md": {
+          link: {path: "today2.md", isResolved: true},
+          linksBySource: {"source.md": now, "source2.md": now}
+        },
+        "yesterday.md": {
+          link: {path: "yesterday.md", isResolved: true},
+          linksBySource: {"source3.md": now - msPerDay}
         }
       };
-
-      const result = getDisplayLinks({state: initialState, config: DEFAULT_DATA().config});
-      const names = result.map((entry) => entry.name);
-      expect(names).toEqual(["today2", "today", "yesterday"]);
+      
+      const updateSignal = signal(0)
+      const resultSignal = deriveDisplayEntries(initialState, updateSignal, signal(DEFAULT_CONFIG));
+      updateSignal.value = 1 // Trigger an update
+      const sortedNames = resultSignal.value.map((entry) => entry.link.isResolved ? entry.link.path : "")
+      expect(sortedNames).toEqual(["today2.md", "today.md", "yesterday.md"]);
     })
 
 
     test("Merges resolved and unresolved links", () => {
-      const initialState: PluginState = {
-        reverseIndex: {
-          "resolvedToday.md": {
-            text: "resolvedToday",
-            isResolved: true,
-            linksBySource: {"source.md": now, source2: now}
-          },
-          "resolvedYesterday.md": {
-            text: "resolvedYesterday",
-            isResolved: true,
-            linksBySource: {"source2.md": now - msPerDay}
-          },
-          "unresolvedToday": {
-            text: "unresolvedToday",
-            isResolved: false,
-            linksBySource: {"source.md": now}
-          }
+      const initialState: ReverseIndex = {
+        "resolvedToday.md": {
+          link: {path: "resolvedToday.md", isResolved: true},
+          linksBySource: {"source.md": now, source2: now}
+        },
+        "resolvedYesterday.md": {
+          link: {path: "resolvedYesterday.md", isResolved: true},
+          linksBySource: {"source2.md": now - msPerDay}
+        },
+        "unresolvedToday": {
+          link: {isResolved: false, text: "unresolvedToday"},
+          linksBySource: {"source.md": now}
         }
       };
 
-      const result = getDisplayLinks({state: initialState, config: DEFAULT_DATA().config});
-      const names = result.map((entry) => entry.name);
-      expect(names).toEqual(["resolvedToday", "unresolvedToday", "resolvedYesterday"]);
+      const updateSignal = signal(0)
+      const resultSignal = deriveDisplayEntries(initialState, updateSignal, signal(DEFAULT_CONFIG));
+      updateSignal.value = 1 // Trigger an update
+      const sortedNames = resultSignal.value.map((entry) => entry.link.isResolved ? entry.link.path : entry.link.text)
+      expect(sortedNames).toEqual(["resolvedToday.md", "unresolvedToday", "resolvedYesterday.md"]);
     });
 
     test("Honors configuration", () => {
-      const initialState: PluginState = {
-        reverseIndex: {
-          "today.md": {
-            text: "today",
-            isResolved: true,
-            linksBySource: {"source.md": now,}
-          },
-          "yesterday": {
-            text: "yesterday",
-            isResolved: false,
-            linksBySource: {"source2.md": now-msPerDay}
-          },
-          // Omitted by maxLength
-          "twoDaysAgo.md": {
-            text: "twoDaysAgo",
-            isResolved: true,
-            linksBySource: {"source.md": now - 2 * msPerDay}
-          },
-          // Would be first but omitted by TTL
-          "earlier.md": {
-            text: "yesterday",
-            isResolved: true,
-            linksBySource: {"1.md": now - 10 * msPerDay, "2.md": now - 10 * msPerDay, "3.md": now - 10 * msPerDay}
-          },
-          // Directory is ignored
-          "disallow/nope.md": {
-            text: "nope",
-            isResolved: true,
-            linksBySource: {"source.md": now, "source2.md": now}
-          },
+      const initialState: ReverseIndex = {
+        "today.md": {
+          link: {path: "today.md", isResolved: true},
+          linksBySource: {"source.md": now,}
+        },
+        "yesterday": {
+          link: {path: "yesterday.md", isResolved: true},
+          linksBySource: {"source2.md": now-msPerDay}
+        },
+        // Omitted by maxLength
+        "twoDaysAgo.md": {
+          link: {path: "twoDaysAgo.md", isResolved: true},
+          linksBySource: {"source.md": now - 2 * msPerDay}
+        },
+        // Would be first but omitted by TTL
+        "earlier.md": {
+          link: {path: "earlier.md", isResolved: true},
+          linksBySource: {"1.md": now - 10 * msPerDay, "2.md": now - 10 * msPerDay, "3.md": now - 10 * msPerDay}
+        },
+        // Directory is ignored
+        "disallow/nope.md": {
+          link: {path: "disallow/nope.md", isResolved: true},
+          linksBySource: {"source.md": now, "source2.md": now}
         }
       };
 
       const config = {
-        ...DEFAULT_DATA().config,
+        ...DEFAULT_CONFIG,
         activityTTLdays: 3,
         maxLength: 2,
         disallowedPaths: ["^disallow/"],
       }
 
-      const result = getDisplayLinks({state: initialState, config: config});
-      const names = result.map((entry) => entry.name);
-      expect(names).toEqual(["today", "yesterday"]);
+      const updateSignal = signal(0)
+      const resultSignal = deriveDisplayEntries(initialState, updateSignal, signal(config));
+      updateSignal.value = 1 // Trigger an update
+      const sortedNames = resultSignal.value.map((entry) => entry.link.isResolved ? entry.link.path : entry.link.text)
+      expect(sortedNames).toEqual(["today.md", "yesterday.md"]);
     })
   })
 });

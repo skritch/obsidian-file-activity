@@ -7,7 +7,6 @@ export type LinksByDay = Array<number>;
 export type ResolvedLink = {
   isResolved: true
   path: PathStr
-  text: LinkText
 }
 export type UnresolvedLink = {
   isResolved: false
@@ -17,8 +16,7 @@ export type LinkKey = PathStr | LinkText
 export type Link = ResolvedLink | UnresolvedLink
 const keyForLink = (link: Link): LinkKey => {return (link.isResolved) ? link.path : link.text};
 export interface ReverseIndexEntry {
-  text: LinkText,
-  path: PathStr | undefined,  // undefined = unresolved link
+  link: Link,
   // Path of file which links to this one => file created ts
   linksBySource: Record<PathStr, DateNumber>,
 }
@@ -37,20 +35,22 @@ export interface PluginConfig {
 
 // Data for entries in the UI
 export interface DisplayEntry {
-  name: LinkText,
+  link: Link,
   counts: LinksByDay,
   total: number,
   weight: number,
-  path?: PathStr
 }
 
-export const DEFAULT_CONFIG = {
+export const DEFAULT_CONFIG: PluginConfig = {
   activityDays: 31,
   weightFalloff: 0.25,
   disallowedPaths: [],
   maxLength: 50,
   openType: 'tab'
 };
+
+/* INDEX UPDATE EVENT HANDLERS */
+
 /**
  * Sync our state with a current list of links for a given source.
  */
@@ -65,15 +65,14 @@ export function update(
     const key = keyForLink(link)
     if (index[key] === undefined) {
       index[key] = {
-        text: link.text,
+        link: link,
         linksBySource: {[sourcePath]: createTime},
-        path: link.isResolved ? link.path : undefined
       }
     } else {
       index[key].linksBySource[sourcePath] = createTime
     }
   })
-  
+
   removeDeadLinks(sourcePath, links.map(keyForLink), index)
 }
 
@@ -124,16 +123,18 @@ export function remove(
 ) {
   // Obsidian will re-resolve any files which linked to this one, so we don't need to
   // handle converting them to unresolved links. So we don't have to do that.
-  removeDeadLinks(path, [], index);
   delete index[path]
+  removeDeadLinks(path, [], index);
 }
+
+/* DISPLAY UPDATE FUNCTIONS */
 
 /**
  * Generates the list of links displayed in the plugin. The top `maxLength` entries
  * are chosen based on the exponentially-weighted sum of the count of links
  * per day. 
  */
-function getDisplayEntry(
+export function getDisplayEntry(
   entry: ReverseIndexEntry,
   weightFalloff: number,
   activityDays: number
@@ -141,11 +142,10 @@ function getDisplayEntry(
   const counts = countlinksByDate(entry, activityDays)
   const total = counts.reduce((acc, cur) => acc + cur, 0)
   return {
-    name: entry.text,
+    link: entry.link,
     counts: counts,
     total: total,
-    weight: weightLinksByDay(counts, weightFalloff * activityDays),
-    path: entry.path
+    weight: weightLinksByDay(counts, weightFalloff * activityDays)
   }
 }
 
@@ -153,7 +153,7 @@ function getDisplayEntry(
  * Return an array of length `max_days` representing the number of links
  * on each day: [t - (max_days - 1), ..., t-2, yesterday, today ]
  */
-function countlinksByDate(links: ReverseIndexEntry, maxDays: number): LinksByDay {
+export function countlinksByDate(links: ReverseIndexEntry, maxDays: number): LinksByDay {
   const today = new Date().setHours(0, 0, 0, 0)
   const msPerDay = 1000 * 60 * 60 * 24
   const init: LinksByDay = new Array<number>(maxDays).fill(0)
@@ -182,22 +182,8 @@ function weightLinksByDay(counts: LinksByDay, falloff: number): number {
   }, 0)
 }
 
-function isDisallowed(entry: ReverseIndexEntry, disallowPatterns: RegExp[]) {
-  const path = entry.path
-  return (path !== undefined && disallowPatterns.some((r) => r.test(path)))
-}
-
-export function getAllDisplayEntries(
-  index: Record<LinkKey, ReverseIndexEntry>, 
-  config: PluginConfig, 
-  patterns: RegExp[]
-): Record<LinkKey, DisplayEntry> {
-  return Object.entries(index)
-    .reduce<Record<LinkKey, DisplayEntry>>((acc, [key, indexEntry]) => {
-      if (isDisallowed(indexEntry, patterns)) { 
-        return acc 
-      }
-      acc[key] = getDisplayEntry(indexEntry, config.weightFalloff, config.activityDays)
-      return acc
-    }, {})
+// TODO: can we use Obsidian's own function for this? MetadataCache.fileToLinktext?
+// TODO: strip path#heading suffixes
+export function pathToLinkText(path: PathStr): LinkText {
+  return path.replace(/^.*\//, '').replace(/\.[^/.]+$/, '')
 }

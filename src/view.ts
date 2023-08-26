@@ -1,12 +1,12 @@
 
 import { App, ItemView, Menu, TFile, WorkspaceLeaf } from 'obsidian';
-import { DisplayEntry, LinkText, PluginConfig } from "./data";
+import { DisplayEntry, Link, PluginConfig, ResolvedLink, UnresolvedLink, pathToLinkText } from "./data";
 import FileActivityPlugin, { VIEW_TYPE } from './main';
 import { getSparklineAsInlineStyle } from './sparkline';
 
 import { Signal } from '@preact/signals';
 import { html } from "htm/preact";
-import { Ref, RefObject, VNode, createContext, createRef, h, render } from "preact";
+import { RefObject, VNode, createContext, createRef, h, render } from "preact";
 import { useContext } from "preact/hooks";
 
 const AppContext = createContext<App | undefined>(undefined)
@@ -21,10 +21,10 @@ function FileActivity(props: {entries: Signal<DisplayEntry[]>, config: Signal<Pl
     <div class="nav-folder-children">
       ${props.entries.value.map(entry => ActivityItem({
         counts: entry.counts,
-        path: entry.path,
-        name: entry.name,
+        link: entry.link,
         app: app, 
-        isOpenFile: (openFilePath !== undefined && entry.path === openFilePath),
+        isOpenFile: (openFilePath !== undefined && 
+          entry.link.isResolved && entry.link.path === openFilePath),
         openType: props.config.value.openType
       }))}
     </div>
@@ -33,11 +33,10 @@ function FileActivity(props: {entries: Signal<DisplayEntry[]>, config: Signal<Pl
 
 type ItemProps = {
   counts: number[];
-  path: string | undefined;
+  link: Link,
   isOpenFile: boolean | undefined;
   app: App | undefined;
   openType: "split" | "window" | "tab";
-  name: LinkText
 }
 
 function ActivityItem(props: ItemProps): VNode {
@@ -47,21 +46,22 @@ function ActivityItem(props: ItemProps): VNode {
   return html`
     <div class="nav-file file-activity-file">
       <div class="nav-file-title file-activity-title" ref=${ref}>
-        ${props.path !== undefined 
-          ? ResolvedLink({...props, parentRef: ref} as ItemProps & {path: string, parentRef: RefObject<any>}) 
-          : UnresolvedLink(props)}
+        ${props.link.isResolved
+          ? ResolvedLinkItem({...props, parentRef: ref} as ItemProps & {link: ResolvedLink, parentRef: RefObject<any>}) 
+          : UnresolvedLinkItem(props as ItemProps & {link: UnresolvedLink})}
         <div class="file-activity-graph" style="${sparkline}"></div>
       </div>
     </div>
   `
 }
 
-function ResolvedLink(props: ItemProps & {path: string, parentRef: RefObject<any>}) {
+function ResolvedLinkItem(props: ItemProps & {link: ResolvedLink, parentRef: RefObject<any>}) {
   const ref = createRef();
+  const entryText = pathToLinkText(props.link.path)
 
   const focusFile = async (): Promise<void> => {
     if (props.app === undefined) { return; }
-    const targetFile = props.app.vault.getAbstractFileByPath(props.path);
+    const targetFile = props.app.vault.getAbstractFileByPath(props.link.path);
   
     if (targetFile !== null && (targetFile instanceof TFile)) {
       let leaf: WorkspaceLeaf | null = props.app.workspace.getMostRecentLeaf();
@@ -77,7 +77,7 @@ function ResolvedLink(props: ItemProps & {path: string, parentRef: RefObject<any
   const dragFile = (event: DragEvent) => {
     if (props.app === undefined) { return; }
     const file = props.app.metadataCache.getFirstLinkpathDest(
-      props.path,
+      props.link.path,
       '',
     );
   
@@ -87,19 +87,18 @@ function ResolvedLink(props: ItemProps & {path: string, parentRef: RefObject<any
     dragManager.onDragStart(event, dragData);
   }
 
-  // Use context to access app?
   const hoverLink = (event: MouseEvent) => props.app?.workspace.trigger('hover-link', {
     event,
     source: VIEW_TYPE,
     targetEl: ref.current,
     hoverParent: props.parentRef.current,
-    linktext: props.path,
+    linktext: entryText,
   })
 
   const contextMenu = (event: MouseEvent) => {
     if (props.app === undefined) { return; }
     const menu = new Menu();
-    const file = props.app.vault.getAbstractFileByPath(props.path);
+    const file = props.app.vault.getAbstractFileByPath(props.link.path);
     props.app.workspace.trigger(
       'file-menu',
       menu,
@@ -119,24 +118,25 @@ function ResolvedLink(props: ItemProps & {path: string, parentRef: RefObject<any
     onMouseOver=${hoverLink}
     onContextMenu=${contextMenu}
   >
-    ${props.name}
+    ${entryText}
   </div>
   `
 }
 
-function UnresolvedLink(props: ItemProps) {
+function UnresolvedLinkItem(props: ItemProps & {link: UnresolvedLink}) {
   const searchFile = () => {
     if (props.app === undefined) { return; }
     // Is there a better way?
-    window.location.href = `obsidian://search?vault=${props.app.vault.getName()}&query=[[${props.name}]]`
+    window.location.href = `obsidian://search?vault=${props.app.vault.getName()}&query=[[${props.link.text}]]`
   }
+  // TODO add a context menu
 
   return html`
   <div 
     class="nav-file-title-content file-activity-title-content file-activity-unresolved"
     onClick=${() => searchFile()}
   >
-    ${props.name}
+    ${props.link.text}
   </div>
   `
 }

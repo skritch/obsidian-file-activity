@@ -1,12 +1,12 @@
 
 import { Plugin, TAbstractFile, TFile, WorkspaceLeaf } from 'obsidian';
-import { remove, PathStr, rename, update, Link, LinkText, LinkKey, ReverseIndex } from './data';
+import { remove, PathStr, rename, update, Link, LinkText, LinkKey, ReverseIndex, DEFAULT_CONFIG, PluginConfig } from './data';
 import FileActivitySettingTab from './settings';
 import FileActivityListView from './view';
-import { Signal, signal } from '@preact/signals';
-import { setupConfigSignals, setupStateSignals } from './signals';
+import { Signal, effect, signal } from '@preact/signals';
+import { deriveDisplayEntries } from './logic';
 
-const PLUGIN_NAME = 'File Activity Plugin';
+export const PLUGIN_NAME = 'File Activity Plugin';
 export const VIEW_TYPE = 'file-activity';
 
 export default class FileActivityPlugin extends Plugin {
@@ -18,12 +18,17 @@ export default class FileActivityPlugin extends Plugin {
   public async onload(): Promise<void> {
     console.log('File Activity: Loading plugin v' + this.manifest.version);
     
-    const config = await setupConfigSignals(this)
+    const config = signal<PluginConfig>({...DEFAULT_CONFIG, ...await this.loadData()})
+    effect(() => {
+      // Ought to be async... return something to cancel this?
+      console.log(`${PLUGIN_NAME}: saving config`)
+      this.saveData(config.value)
+    })
 
     this.index = {}
     this.updateSignal = signal(0)
     await this.indexAll()
-    const displayEntries = setupStateSignals(this.index, this.updateSignal, config)
+    const displayEntries = deriveDisplayEntries(this.index, this.updateSignal, config)
 
     this.registerView(
       VIEW_TYPE,
@@ -111,7 +116,6 @@ export default class FileActivityPlugin extends Plugin {
    * - Occasionally at other times, it appears.
    */
   private readonly handleResolve = async (file: TFile): Promise<void> => {
-    console.log()
     update(
       file.path,
       file.stat.ctime,
@@ -156,13 +160,6 @@ export default class FileActivityPlugin extends Plugin {
     remove(file.path, this.index)
     this.updateSignal.value = this.updateSignal.value + 1
   };
-
-
-  // TODO: can we use Obsidian's own function for this? MetadataCache.fileToLinktext?
-  // TODOL strip path#heading suffixes
-  pathToLinkText = (path: PathStr): LinkText => {
-    return path.replace(/^.*\//, '').replace(/\.[^/.]+$/, '')
-  }
       
   /**
    * Returns [[resolved links], [unresolved links]]
@@ -177,7 +174,6 @@ export default class FileActivityPlugin extends Plugin {
         return {
           isResolved: true,
           path: path,
-          text: this.pathToLinkText(path)
         }}
       ))
     }

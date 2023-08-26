@@ -39,7 +39,7 @@ export const getSparklineAsInlineStyle = (timeseries: Array<number>, ymax: numbe
   <svg xmlns='http://www.w3.org/2000/svg' viewBox='${x0 - scale} ${y0 - scale} ${dx + scale * 2} ${dy + scale * 2}' preserveAspectRatio='none'>
     <path
       d='${path}'
-      stroke-width='2px'
+      stroke-width='1.5px'
       stroke='white'
       fill='transparent'
     />
