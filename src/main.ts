@@ -1,7 +1,7 @@
 
 import { Signal, effect, signal } from '@preact/signals';
 import { Plugin, TAbstractFile, TFile, WorkspaceLeaf } from 'obsidian';
-import { DEFAULT_CONFIG, Link, PathStr, PluginConfig, ReverseIndex, remove, rename, update } from './data';
+import { DEFAULT_CONFIG, Link, LinkType, PathStr, PluginConfig, ReverseIndex, remove, rename, update } from './data';
 import { deriveDisplayEntries } from './display';
 import FileActivitySettingTab from './settings';
 import FileActivityListView from './view';
@@ -166,11 +166,12 @@ export default class FileActivityPlugin extends Plugin {
     let links: Array<Link> = []
     const resolvedlinks = this.app.metadataCache.resolvedLinks[path];
     const unresolvedLinks = this.app.metadataCache.unresolvedLinks[path]
+    const tags = this.app.metadataCache.getCache(path)?.tags
 
     if (resolvedlinks !== undefined) {
       links = links.concat(Object.keys(resolvedlinks).map((path) => {
         return {
-          isResolved: true,
+          linkType: LinkType.RESOLVED,
           path: path,
         }}
       ))
@@ -178,8 +179,16 @@ export default class FileActivityPlugin extends Plugin {
     if (unresolvedLinks !== undefined) {
       links = links.concat(Object.keys(unresolvedLinks).map((text) => {
         return {
-          isResolved: false,
+          linkType: LinkType.UNRESOLVED,
           text: text,
+        }}
+      ))
+    }
+    if (tags !== undefined) {
+      links = links.concat(Object.values(tags).map((entry) => {
+        return {
+          linkType: LinkType.TAG,
+          text: entry.tag,
         }}
       ))
     }

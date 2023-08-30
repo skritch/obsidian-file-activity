@@ -1,5 +1,5 @@
 import { Signal, computed, effect, signal } from '@preact/signals';
-import { DateNumber, DisplayEntry, LinkKey, LinksByDay, PluginConfig, ReverseIndex, ReverseIndexEntry } from "./data";
+import { DateNumber, DisplayEntry, LinkKey, LinkType, LinksByDay, PluginConfig, ReverseIndex, ReverseIndexEntry } from "./data";
 
 
 /* DISPLAY UPDATE FUNCTIONS */
@@ -77,7 +77,7 @@ export function deriveDisplayEntries(
   const getDisplayEntries = (conf: PluginConfig, res: RegExp[]) => {
     return Object.entries(index)
       .reduce<Record<LinkKey, DisplayEntry>>((acc, [key, indexEntry]) => {
-        if (indexEntry.link.isResolved) {
+        if (indexEntry.link.linkType == LinkType.RESOLVED) {
           const path = indexEntry.link.path
           if (res.some((r) => r.test(path))) { 
             return acc 

@@ -5,18 +5,27 @@ export type PathStr = string;
 export type LinkText = string;
 export type DateNumber = number;
 export type LinksByDay = Array<number>;
-
+export enum LinkType {
+  RESOLVED,
+  UNRESOLVED,
+  TAG
+}
 export type ResolvedLink = {
-  isResolved: true
+  linkType: LinkType.RESOLVED
   path: PathStr
 }
 export type UnresolvedLink = {
-  isResolved: false
+  linkType: LinkType.UNRESOLVED
   text: LinkText
 }
-export type Link = ResolvedLink | UnresolvedLink
+
+export type Tag = {
+  linkType: LinkType.TAG
+  text: LinkText
+}
+export type Link = ResolvedLink | UnresolvedLink | Tag
 export type LinkKey = PathStr | LinkText
-const keyForLink = (link: Link): LinkKey => {return (link.isResolved) ? link.path : link.text};
+const keyForLink = (link: Link): LinkKey => {return (link.linkType == LinkType.RESOLVED) ? link.path : link.text};
 
 export interface ReverseIndexEntry {
   link: Link,

@@ -1,6 +1,6 @@
 
 import { App, ItemView, Menu, TFile, WorkspaceLeaf } from 'obsidian';
-import { DisplayEntry, Link, LinkText, PathStr, PluginConfig, ResolvedLink, UnresolvedLink } from "./data";
+import { DisplayEntry, Link, LinkText, LinkType, PathStr, PluginConfig, ResolvedLink, Tag, UnresolvedLink } from "./data";
 import FileActivityPlugin, { VIEW_TYPE } from './main';
 import { getSparklineAsInlineStyle } from './sparkline';
 
@@ -26,7 +26,7 @@ function FileActivity(props: {entries: Signal<DisplayEntry[]>, config: Signal<Pl
         link: entry.link,
         app: props.app, 
         isOpenFile: (openFilePath !== undefined && 
-          entry.link.isResolved && entry.link.path === openFilePath),
+          entry.link.linkType == LinkType.RESOLVED && entry.link.path === openFilePath),
         openType: props.config.value.openType
       }))}
     </div>
@@ -42,15 +42,14 @@ type ItemProps = {
 }
 
 function ActivityItem(props: ItemProps): VNode {
-  
   const ref = createRef()
   const sparkline = getSparklineAsInlineStyle(props.counts, 10)
   return html`
     <div class="nav-file file-activity-file">
       <div class="nav-file-title file-activity-title ${props.isOpenFile ? 'is-active' : ''}" ref=${ref}>
-        ${props.link.isResolved
+        ${props.link.linkType == LinkType.RESOLVED
           ? ResolvedLinkItem({...props, parentRef: ref} as ItemProps & {link: ResolvedLink, parentRef: RefObject<HTMLElement>}) 
-          : UnresolvedLinkItem(props as ItemProps & {link: UnresolvedLink})}
+          : UnresolvedLinkOrTagItem(props as ItemProps & {link: UnresolvedLink | Tag})}
         <div class="file-activity-graph" style="${sparkline}"></div>
       </div>
     </div>
@@ -122,16 +121,22 @@ function ResolvedLinkItem(props: ItemProps & {link: ResolvedLink, parentRef: Ref
   `
 }
 
-function UnresolvedLinkItem(props: ItemProps & {link: UnresolvedLink}) {
-  const searchFile = () => {
-    window.location.href = `obsidian://search?vault=${props.app.vault.getName()}&query=[[${props.link.text}]]`
+function UnresolvedLinkOrTagItem(props: ItemProps & {link: UnresolvedLink | Tag}) {
+  const search = () => {
+    let query;
+    if (props.link.linkType == LinkType.UNRESOLVED) {
+      query = `[[${props.link.text}]]`
+    } else {
+      query = `tag:%23${props.link.text.substring(1)}`
+    }
+    window.location.href = `obsidian://search?vault=${props.app.vault.getName()}&query=${query}`
   }
   // TODO add a context menu
 
   return html`
   <div 
     class="nav-file-title-content file-activity-title-content file-activity-unresolved"
-    onClick=${() => searchFile()}
+    onClick=${() => search()}
   >
     ${props.link.text}
   </div>
