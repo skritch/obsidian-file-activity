@@ -94,7 +94,6 @@ export default class FileActivityPlugin extends Plugin {
     console.log(PLUGIN_NAME + ': Indexing ' + mdFiles.length + ' files.')
     mdFiles.forEach((file) => {
       const links = this.getLinksForPath(file.path)
-      // For a bulk index, skip anything that doesn't have links.
       if (links.length > 0) {
         update(
           file.path,
@@ -158,6 +157,10 @@ export default class FileActivityPlugin extends Plugin {
     remove(file.path, this.index)
     this.triggerUpdate()
   };
+
+  private isLinkValid = (path: PathStr): boolean => {
+    return path.endsWith('.md')
+  }
       
   /**
    * Returns [[resolved links], [unresolved links]]
@@ -169,12 +172,14 @@ export default class FileActivityPlugin extends Plugin {
     const tags = this.app.metadataCache.getCache(path)?.tags
 
     if (resolvedlinks !== undefined) {
-      links = links.concat(Object.keys(resolvedlinks).map((path) => {
-        return {
-          linkType: LinkType.RESOLVED,
-          path: path,
-        }}
-      ))
+      links = links.concat(Object.keys(resolvedlinks)
+        .filter(this.isLinkValid)
+        .map((path) => {
+          return {
+            linkType: LinkType.RESOLVED,
+            path: path,
+          }}
+        ))
     }
     if (unresolvedLinks !== undefined) {
       links = links.concat(Object.keys(unresolvedLinks).map((text) => {
